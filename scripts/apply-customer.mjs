@@ -235,7 +235,8 @@ if (fs.existsSync(icon)) {
   try { sharp = (await import('sharp')).default; } catch (e) { console.warn('sharp is not installed yet (npm ci first): icon and splash left as they were'); }
   if (sharp) {
     for (const n of fs.readdirSync(P('resources'))) fs.rmSync(P('resources', n));
-    fs.copyFileSync(icon, P('resources', 'icon-only.png'));
+    // Re-encoded as PNG with no transparency (the site icon may be a JPEG; Apple rejects icons with alpha).
+    await sharp(icon).resize(1024, 1024, { fit: 'cover' }).flatten({ background: c.icon_background || colors.paper }).png().toFile(P('resources', 'icon-only.png'));
     console.log('copied icon.png to resources/icon-only.png (run npm run icons next)');
     const src = sharp(icon).resize(1024, 1024, { fit: 'cover' });
     const buf = await src.png().toBuffer();

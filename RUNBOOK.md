@@ -58,6 +58,20 @@ Google (needs a $25 Play Console developer account):
 - kit-ios about 15 min, kit-store about 20 min, kit-android about 8 min on Linux.
 - Roughly $4 to $5 for a first launch, about $1.50 per later iPhone update.
 
+## Builds started from the customer's site (or their AI)
+
+1. On marketur.net: App Kit orders > Build settings. Paste the Codemagic API token and the
+   Codemagic app id once. They never leave marketur.net.
+2. On the customer's order page: tick "Make a new key", press Update, copy the key and send it
+   to the customer privately. They paste it under Settings > App Kit on their site.
+3. From then on the site (Settings > App Kit) and any AI connected to it through the Marketur MCP
+   plugin can change the app (app_update_settings) and start builds (app_build). Marketur checks
+   the plan, the monthly limit (Build settings) and that the key belongs to that website, saves the
+   site's latest settings into the order's customer.json, and starts the build. The build machine
+   downloads that customer.json and the icon with a signed link that lasts 12 hours.
+4. You can also start a build from the order page (admin builds do not count against the limit),
+   and edit the customer.json there before a build.
+
 ## Updating an app later
 
 Change customer.json (bump `version`), run kit-ios and kit-store (and kit-android). Most changes

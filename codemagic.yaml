@@ -19,6 +19,13 @@ definitions:
       set -e
       test -n "$CUSTOMER" || { echo "Set CUSTOMER"; exit 1; }
       npm ci
+      # Builds started from Marketur bring the customer's latest settings and icon with them.
+      if [ -n "$KIT_CONFIG_URL" ]; then
+        mkdir -p "customers/$CUSTOMER"
+        curl -fsSL "$KIT_CONFIG_URL" -o "customers/$CUSTOMER/customer.json"
+        ICON_URL=$(node -e 'const c=require(process.argv[1]);process.stdout.write(c.icon_url||"")' "$PWD/customers/$CUSTOMER/customer.json")
+        if [ -n "$ICON_URL" ]; then curl -fsSL "$ICON_URL" -o "customers/$CUSTOMER/icon.png" || echo "Could not fetch the icon, keeping the one in the repo"; fi
+      fi
       node scripts/apply-customer.mjs "customers/$CUSTOMER"
       npm run icons
       sed 's/^export //' kit-out/env.sh | tr -d '"' >> "$CM_ENV"
