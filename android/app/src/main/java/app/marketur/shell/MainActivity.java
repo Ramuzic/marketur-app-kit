@@ -53,6 +53,8 @@ public class MainActivity extends BridgeActivity {
     private boolean offline = false;
     private boolean pendingChat = false;
     private boolean tabHidden = false;
+    /** The tab bar and the space around it (the floating style has a margin). */
+    private View barArea;
     private boolean typing = false;
     private ConnectivityManager.NetworkCallback netCallback;
 
@@ -62,6 +64,8 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         current = this;
         cfg = AppConfig.get(this);
+        // Live settings from the site, used the next time the app opens.
+        AppConfig.refresh(this);
 
         buildShell();
         watchWebView();
@@ -159,7 +163,23 @@ public class MainActivity extends BridgeActivity {
         root.addView(webArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         tabBar = buildTabBar();
-        root.addView(tabBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        final boolean pill = "floating".equals(cfg.nav);
+        final FrameLayout barWrap = new FrameLayout(this);
+        barWrap.setBackgroundColor(pill ? cfg.paper : cfg.bar);
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (pill) {
+            // Floating: a rounded bar with a little space around it.
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(cfg.bar);
+            bg.setCornerRadius(dp(30));
+            tabBar.setBackground(bg);
+            blp.leftMargin = dp(14);
+            blp.rightMargin = dp(14);
+            blp.topMargin = dp(6);
+        }
+        barWrap.addView(tabBar, blp);
+        barArea = barWrap;
+        root.addView(barWrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         content.addView(root, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -174,8 +194,8 @@ public class MainActivity extends BridgeActivity {
             Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             typing = insets.isVisible(WindowInsetsCompat.Type.ime());
             root.setPadding(bars.left, bars.top, bars.right, typing ? ime.bottom : 0);
-            tabBar.setVisibility(typing || tabHidden ? View.GONE : View.VISIBLE);
-            tabBar.setPadding(0, 0, 0, bars.bottom);
+            barArea.setVisibility(barShown() ? View.VISIBLE : View.GONE);
+            barArea.setPadding(0, 0, 0, bars.bottom + ("floating".equals(cfg.nav) ? dp(8) : 0));
             return WindowInsetsCompat.CONSUMED;
         });
         applyBarColors();
@@ -185,7 +205,12 @@ public class MainActivity extends BridgeActivity {
     void setTabBarHidden(boolean hidden) {
         if (hidden == tabHidden || tabBar == null) return;
         tabHidden = hidden;
-        tabBar.setVisibility(typing || tabHidden ? View.GONE : View.VISIBLE);
+        if (barArea != null) barArea.setVisibility(barShown() ? View.VISIBLE : View.GONE);
+    }
+
+    /** The bar shows unless the keyboard is up, the page asked to hide it, or the style is none. */
+    private boolean barShown() {
+        return !typing && !tabHidden && !"none".equals(cfg.nav);
     }
 
     /** A red count on the tab with this action (1.1.3: unread chat messages on the Chat tab). 0 clears it. */

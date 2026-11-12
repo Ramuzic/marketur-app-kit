@@ -17,6 +17,14 @@ class RootViewController: UIViewController, UITabBarDelegate {
     private let config = AppConfig.shared
     private let bridgeVC = AppBridgeViewController()
     private let tabBar = UITabBar()
+    /// The fixed full width bar on iOS 26 (Apple's own bar there is only the floating pill).
+    private let kitBar = KitBar()
+    private var useKit: Bool {
+        if #available(iOS 26.0, *) { return config.nav == "fixed" }
+        return false
+    }
+    /// Whichever bar this app uses.
+    private var bar: UIView { useKit ? kitBar : tabBar }
     private let offlineView = UIView()
     private let refresh = UIRefreshControl()
     private let monitor = NWPathMonitor()
@@ -37,6 +45,7 @@ class RootViewController: UIViewController, UITabBarDelegate {
 
     /// iOS 26 draws the tab bar as a floating glass pill, so the page runs underneath it.
     private var floating: Bool {
+        if config.nav != "floating" { return false }
         if #available(iOS 26.0, *) { return true }
         return false
     }
@@ -59,20 +68,20 @@ class RootViewController: UIViewController, UITabBarDelegate {
 
         // The native tab bar.
         buildTabBar()
-        view.addSubview(tabBar)
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bar)
+        bar.translatesAutoresizingMaskIntoConstraints = false
 
-        webToTab = web.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+        webToTab = web.bottomAnchor.constraint(equalTo: bar.topAnchor)
         webToBottom = web.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         (floating ? webToBottom : webToTab).isActive = true
         NSLayoutConstraint.activate([
             web.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             web.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             web.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            tabBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -49)
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -49)
         ])
 
         // Hidden while the splash screen shows; finishBoot() brings it in.
@@ -145,7 +154,7 @@ class RootViewController: UIViewController, UITabBarDelegate {
     private func updateObscured() {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *), let web = bridgeVC.webView {
-            let inset = tabHidden ? 0 : max(0, view.bounds.maxY - tabBar.frame.minY)
+            let inset = tabHidden || !floating ? 0 : max(0, view.bounds.maxY - bar.frame.minY)
             if web.obscuredContentInsets.bottom != inset {
                 web.obscuredContentInsets = UIEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
             }
@@ -163,6 +172,12 @@ class RootViewController: UIViewController, UITabBarDelegate {
 
     /// A red count on the tab with this action (the Chat tab shows unread messages). 0 clears it.
     func setTabBadge(action: String, count: Int) {
+        if useKit {
+            for (i, t) in config.tabs.enumerated() where t.action == action {
+                kitBar.setBadge(i, count > 0 ? (count > 99 ? "99+" : String(count)) : nil)
+            }
+            return
+        }
         guard let items = tabBar.items else { return }
         for (i, t) in config.tabs.enumerated() where t.action == action && i < items.count {
             items[i].badgeValue = count > 0 ? (count > 99 ? "99+" : String(count)) : nil
@@ -182,14 +197,16 @@ class RootViewController: UIViewController, UITabBarDelegate {
         }
     }
 
-    private func applyTabBar(_ hidden: Bool, animated: Bool = true) {
+    private func applyTabBar(_ wantHide: Bool, animated: Bool = true) {
+        // The none style never shows the bar.
+        let hidden = wantHide || config.nav == "none"
         if hidden == tabHidden && animated { return }
         tabHidden = hidden
         layoutWeb()
-        tabBar.isUserInteractionEnabled = !hidden
+        bar.isUserInteractionEnabled = !hidden
         let change = {
-            self.tabBar.alpha = hidden ? 0 : 1
-            self.tabBar.transform = hidden ? CGAffineTransform(translationX: 0, y: max(self.tabBar.bounds.height, 90)) : .identity
+            self.bar.alpha = hidden ? 0 : 1
+            self.bar.transform = hidden ? CGAffineTransform(translationX: 0, y: max(self.bar.bounds.height, 90)) : .identity
             self.view.layoutIfNeeded()
         }
         if animated {
@@ -234,6 +251,11 @@ class RootViewController: UIViewController, UITabBarDelegate {
     // MARK: - Tab bar
 
     private func buildTabBar() {
+        if useKit {
+            kitBar.build(tabs: config.tabs, background: config.barColor, active: config.activeColor, inactive: config.inactiveColor)
+            kitBar.onSelect = { [weak self] i in self?.selectTab(i) }
+            return
+        }
         tabBar.delegate = self
         tabBar.tintColor = config.activeColor
         if !floating {
@@ -278,10 +300,15 @@ class RootViewController: UIViewController, UITabBarDelegate {
     }
 
     func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+        selectTab(item.tag)
+    }
+
+    private func selectTab(_ index: Int) {
+        guard index >= 0 && index < config.tabs.count else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let tab = config.tabs[item.tag]
-        let same = item.tag == lastTag
-        lastTag = item.tag
+        let tab = config.tabs[index]
+        let same = index == lastTag
+        lastTag = index
 
         if tab.action == "chat" {
             openChat()
@@ -319,15 +346,16 @@ class RootViewController: UIViewController, UITabBarDelegate {
     }
 
     private func syncTab(_ url: URL?) {
-        guard let url = url, let items = tabBar.items else { return }
+        guard let url = url else { return }
+        let count = useKit ? config.tabs.count : (tabBar.items?.count ?? 0)
         var best = -1, bestScore = 0
         for (i, t) in config.tabs.enumerated() {
             let s = score(t, url)
             if s > bestScore { bestScore = s; best = i }
         }
         // A page no tab points at (a single link, a profile) keeps the last tab lit.
-        if best >= 0 && best < items.count {
-            tabBar.selectedItem = items[best]
+        if best >= 0 && best < count {
+            if useKit { kitBar.select(best) } else { tabBar.selectedItem = tabBar.items?[best] }
             lastTag = best
         }
     }
@@ -423,7 +451,7 @@ class RootViewController: UIViewController, UITabBarDelegate {
             offlineView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             offlineView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             offlineView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            offlineView.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+            offlineView.bottomAnchor.constraint(equalTo: bar.topAnchor)
         ])
 
         let icon = UIImageView(image: UIImage(systemName: "wifi.slash"))
@@ -487,5 +515,111 @@ class RootViewController: UIViewController, UITabBarDelegate {
             setOffline(false)
             bridgeVC.webView?.reload()
         }
+    }
+}
+
+/// A fixed, full width bottom bar drawn by the app itself: the same look on every iOS version.
+/// Used for the fixed bar style on iOS 26, where Apple's own bar is only the floating pill.
+final class KitBar: UIView {
+    var onSelect: ((Int) -> Void)?
+    private var buttons: [UIControl] = []
+    private var icons: [UIImageView] = []
+    private var labels: [UILabel] = []
+    private var badges: [UILabel] = []
+    private var active = UIColor.systemBlue
+    private var inactive = UIColor.gray
+    private(set) var selected = 0
+
+    func build(tabs: [AppTab], background: UIColor, active: UIColor, inactive: UIColor) {
+        self.active = active
+        self.inactive = inactive
+        backgroundColor = background
+        let line = UIView()
+        line.backgroundColor = UIColor(white: 0.5, alpha: 0.18)
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.distribution = .fillEqually
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            line.topAnchor.constraint(equalTo: topAnchor),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: trailingAnchor),
+            line.heightAnchor.constraint(equalToConstant: 0.5),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.heightAnchor.constraint(equalToConstant: 49)
+        ])
+        for (i, t) in tabs.enumerated() {
+            let b = UIControl()
+            b.tag = i
+            b.accessibilityLabel = t.label
+            b.accessibilityTraits = .button
+            b.addTarget(self, action: #selector(tap(_:)), for: .touchUpInside)
+            let icon = UIImageView(image: UIImage(systemName: AppConfig.symbol(t.icon)))
+            icon.contentMode = .scaleAspectFit
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            let label = UILabel()
+            label.text = t.label
+            label.font = .systemFont(ofSize: 10, weight: .medium)
+            label.textAlignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            let badge = UILabel()
+            badge.font = .systemFont(ofSize: 10, weight: .bold)
+            badge.textColor = .white
+            badge.textAlignment = .center
+            badge.backgroundColor = UIColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1)
+            badge.layer.cornerRadius = 8
+            badge.clipsToBounds = true
+            badge.isHidden = true
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            b.addSubview(icon)
+            b.addSubview(label)
+            b.addSubview(badge)
+            NSLayoutConstraint.activate([
+                icon.topAnchor.constraint(equalTo: b.topAnchor, constant: 7),
+                icon.centerXAnchor.constraint(equalTo: b.centerXAnchor),
+                icon.heightAnchor.constraint(equalToConstant: 24),
+                icon.widthAnchor.constraint(equalToConstant: 28),
+                label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 2),
+                label.leadingAnchor.constraint(equalTo: b.leadingAnchor, constant: 2),
+                label.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -2),
+                badge.topAnchor.constraint(equalTo: b.topAnchor, constant: 3),
+                badge.leadingAnchor.constraint(equalTo: icon.centerXAnchor, constant: 6),
+                badge.heightAnchor.constraint(equalToConstant: 16),
+                badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 16)
+            ])
+            stack.addArrangedSubview(b)
+            buttons.append(b)
+            icons.append(icon)
+            labels.append(label)
+            badges.append(badge)
+        }
+        select(0)
+    }
+
+    @objc private func tap(_ sender: UIControl) {
+        select(sender.tag)
+        onSelect?(sender.tag)
+    }
+
+    func select(_ index: Int) {
+        selected = index
+        for i in 0..<icons.count {
+            let on = i == index
+            icons[i].tintColor = on ? active : inactive
+            labels[i].textColor = on ? active : inactive
+            labels[i].font = .systemFont(ofSize: 10, weight: on ? .semibold : .medium)
+            buttons[i].accessibilityTraits = on ? [.button, .selected] : .button
+        }
+    }
+
+    func setBadge(_ index: Int, _ text: String?) {
+        guard index >= 0 && index < badges.count else { return }
+        badges[index].text = text.map { " \($0) " }
+        badges[index].isHidden = text == nil
     }
 }

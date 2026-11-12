@@ -61,6 +61,9 @@ write('capacitor.config.json', JSON.stringify({
 const tabs = (c.tabs && c.tabs.length ? c.tabs : [{ label: 'Home', url: start, icon: 'home', match: ['/'] }]);
 write('www/app.json', JSON.stringify({
   version, start, host,
+  // Live settings from the App Kit plugin on the site (tabs, colors, bar style), read each time the app opens.
+  config_url: c.config_url || 'https://' + host + '/wp-json/mak/v1/app-config',
+  nav: ['floating', 'fixed', 'none'].includes(c.nav) ? c.nav : 'floating',
   onesignal_app_id: c.onesignal_app_id || '',
   colors, tabs,
   onboarding: c.onboarding || [],
@@ -227,13 +230,13 @@ write('package.json', JSON.stringify(pj, null, 2) + '\n');
 const icon = path.join(dir, 'icon.png');
 if (fs.existsSync(icon)) {
   fs.mkdirSync(P('resources'), { recursive: true });
-  for (const n of fs.readdirSync(P('resources'))) fs.rmSync(P('resources', n));
-  fs.copyFileSync(icon, P('resources', 'icon-only.png'));
-  console.log('copied icon.png to resources/icon-only.png (run npm run icons next)');
   // Android adaptive icon layers and the launch screens, so nothing of the old app is left.
   let sharp = null;
-  try { sharp = (await import('sharp')).default; } catch (e) { console.warn('sharp is not installed yet (npm ci first): adaptive icon and splash not made'); }
+  try { sharp = (await import('sharp')).default; } catch (e) { console.warn('sharp is not installed yet (npm ci first): icon and splash left as they were'); }
   if (sharp) {
+    for (const n of fs.readdirSync(P('resources'))) fs.rmSync(P('resources', n));
+    fs.copyFileSync(icon, P('resources', 'icon-only.png'));
+    console.log('copied icon.png to resources/icon-only.png (run npm run icons next)');
     const src = sharp(icon).resize(1024, 1024, { fit: 'cover' });
     const buf = await src.png().toBuffer();
     const { data } = await sharp(buf).extract({ left: 4, top: 4, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });

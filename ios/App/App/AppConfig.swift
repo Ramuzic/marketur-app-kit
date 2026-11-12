@@ -37,6 +37,17 @@ final class AppConfig {
     let offlineTitle: String
     let offlineText: String
     let offlineButton: String
+    /// Bottom bar style: floating (the glass pill on iOS 26), fixed (a full width bar) or none.
+    let nav: String
+    /// Where the live settings come from (the App Kit plugin on the site).
+    let configURL: URL?
+
+    /// Live settings saved from the site, used the next time the app opens.
+    static var cacheURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("app-config.json")
+    }
 
     private init() {
         var json: [String: Any] = [:]
@@ -45,9 +56,26 @@ final class AppConfig {
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             json = obj
         }
-        let fallbackStart = URL(string: "https://example.com/")!
-        start = URL(string: json["start"] as? String ?? "") ?? fallbackStart
-        host = json["host"] as? String ?? "example.com"
+        let siteHost = json["host"] as? String ?? "example.com"
+        host = siteHost
+        let h = siteHost.lowercased()
+        func own(_ u: URL?) -> Bool {
+            guard let x = u?.host?.lowercased() else { return false }
+            return x == h || x.hasSuffix("." + h)
+        }
+        configURL = URL(string: json["config_url"] as? String ?? "https://\(siteHost)/wp-json/mak/v1/app-config")
+        // Only these keys can change without a new build, and only for this site.
+        if let data = try? Data(contentsOf: AppConfig.cacheURL),
+           let remote = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           (remote["host"] as? String ?? siteHost).lowercased() == h {
+            for key in ["start", "nav", "tabs", "colors", "onboarding", "offline"] {
+                if let v = remote[key] { json[key] = v }
+            }
+        }
+        let fallbackStart = URL(string: "https://\(siteHost)/")!
+        let wantStart = URL(string: json["start"] as? String ?? "")
+        start = own(wantStart) ? wantStart! : fallbackStart
+        nav = json["nav"] as? String ?? "floating"
         oneSignalAppId = json["onesignal_app_id"] as? String ?? ""
 
         let colors = json["colors"] as? [String: String] ?? [:]
@@ -62,7 +90,7 @@ final class AppConfig {
         var t: [AppTab] = []
         for item in json["tabs"] as? [[String: Any]] ?? [] {
             guard let label = item["label"] as? String,
-                  let u = URL(string: item["url"] as? String ?? "") else { continue }
+                  let u = URL(string: item["url"] as? String ?? ""), own(u), t.count < 5 else { continue }
             t.append(AppTab(label: label, url: u, icon: item["icon"] as? String ?? "home", action: item["action"] as? String ?? "navigate", match: item["match"] as? [String] ?? []))
         }
         if t.isEmpty {
@@ -83,6 +111,22 @@ final class AppConfig {
         offlineTitle = off["title"] ?? "You're offline"
         offlineText = off["text"] ?? "Check your connection and try again."
         offlineButton = off["button"] ?? "Try again"
+    }
+
+    /// Fetches the live settings from the site in the background and keeps them for the
+    /// next time the app opens. A bad answer is ignored, so the app never breaks on it.
+    static func refresh() {
+        let cfg = AppConfig.shared
+        guard let url = cfg.configURL, url.scheme == "https", cfg.isOwn(url) else { return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            guard let data = data, data.count < 200_000,
+                  (resp as? HTTPURLResponse)?.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (obj["host"] as? String ?? "").lowercased() == cfg.host.lowercased() else { return }
+            try? data.write(to: AppConfig.cacheURL, options: .atomic)
+        }.resume()
     }
 
     /// SF Symbol for each icon name used in app.json.

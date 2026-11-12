@@ -2,6 +2,8 @@
   "version": "1.0.0",
   "start": "https://acmecoffee.com/",
   "host": "acmecoffee.com",
+  "config_url": "https://acmecoffee.com/wp-json/mak/v1/app-config",
+  "nav": "floating",
   "onesignal_app_id": "",
   "colors": {
     "top": "#FFFFFF",

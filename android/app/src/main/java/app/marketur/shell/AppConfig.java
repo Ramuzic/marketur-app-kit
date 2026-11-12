@@ -3,7 +3,12 @@ package app.marketur.shell;
 import android.content.Context;
 import android.graphics.Color;
 import android.net.Uri;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +54,10 @@ public final class AppConfig {
     public String offlineTitle = "You're offline";
     public String offlineText = "Check your connection and try again.";
     public String offlineButton = "Try again";
+    /** Bottom bar style: floating (a rounded bar with space around it), fixed (full width) or none. */
+    public String nav = "floating";
+    /** Where the live settings come from (the App Kit plugin on the site). */
+    public String configUrl = "";
     public final List<Tab> tabs = new ArrayList<>();
     public final List<Page> onboarding = new ArrayList<>();
 
@@ -64,8 +73,21 @@ public final class AppConfig {
             int n;
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
             JSONObject j = new JSONObject(new String(out.toByteArray(), StandardCharsets.UTF_8));
-            start = j.optString("start", start);
             host = j.optString("host", host);
+            configUrl = j.optString("config_url", "https://" + host + "/wp-json/mak/v1/app-config");
+            // Live settings saved from the site last time (tabs, colors, bar style, onboarding).
+            // Only these keys can change without a new build, and only for this site.
+            try {
+                JSONObject r = new JSONObject(readFile(new File(c.getFilesDir(), CACHE)));
+                if (host.equalsIgnoreCase(r.optString("host", host))) {
+                    for (String k : new String[]{"start", "nav", "tabs", "colors", "onboarding", "offline"}) {
+                        if (r.has(k)) j.put(k, r.get(k));
+                    }
+                }
+            } catch (Exception ignored) {}
+            start = j.optString("start", start);
+            if (!isOwn(start)) start = "https://" + host + "/";
+            nav = j.optString("nav", nav);
             oneSignalAppId = j.optString("onesignal_app_id", "");
             JSONObject col = j.optJSONObject("colors");
             if (col != null) {
@@ -84,7 +106,9 @@ public final class AppConfig {
                     List<String> m = new ArrayList<>();
                     JSONArray ma = o.optJSONArray("match");
                     if (ma != null) for (int k = 0; k < ma.length(); k++) m.add(ma.optString(k));
-                    tabs.add(new Tab(o.optString("label"), o.optString("url", start), o.optString("icon", "home"), o.optString("action", "navigate"), m));
+                    String u = o.optString("url", start);
+                    if (!isOwn(u) || tabs.size() >= 5) continue;
+                    tabs.add(new Tab(o.optString("label"), u, o.optString("icon", "home"), o.optString("action", "navigate"), m));
                 }
             }
             JSONArray ob = j.optJSONArray("onboarding");
@@ -108,6 +132,53 @@ public final class AppConfig {
             m.add("/");
             tabs.add(new Tab("Home", start, "home", "navigate", m));
         }
+    }
+
+    private static final String CACHE = "app-config.json";
+
+    private static String readFile(File f) throws Exception {
+        try (InputStream in = new FileInputStream(f)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Fetches the live settings from the site in the background and keeps them for the
+     * next time the app opens. A bad answer is ignored, so the app never breaks on it.
+     */
+    public static void refresh(Context c) {
+        final Context app = c.getApplicationContext();
+        final AppConfig cfg = get(app);
+        if (cfg.configUrl == null || !cfg.configUrl.startsWith("https://") || !cfg.isOwn(cfg.configUrl)) return;
+        new Thread(() -> {
+            HttpURLConnection con = null;
+            try {
+                con = (HttpURLConnection) new URL(cfg.configUrl).openConnection();
+                con.setConnectTimeout(8000);
+                con.setReadTimeout(8000);
+                con.setRequestProperty("Accept", "application/json");
+                if (con.getResponseCode() != 200) return;
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                try (InputStream in = con.getInputStream()) {
+                    byte[] buf = new byte[4096];
+                    int n;
+                    while ((n = in.read(buf)) != -1 && out.size() < 200000) out.write(buf, 0, n);
+                }
+                String body = new String(out.toByteArray(), StandardCharsets.UTF_8);
+                JSONObject r = new JSONObject(body);
+                if (!cfg.host.equalsIgnoreCase(r.optString("host", ""))) return;
+                File tmp = new File(app.getFilesDir(), CACHE + ".tmp");
+                try (FileOutputStream f = new FileOutputStream(tmp)) { f.write(body.getBytes(StandardCharsets.UTF_8)); }
+                tmp.renameTo(new File(app.getFilesDir(), CACHE));
+            } catch (Exception ignored) {
+            } finally {
+                if (con != null) con.disconnect();
+            }
+        }).start();
     }
 
     private static int color(JSONObject o, String key, int def) {

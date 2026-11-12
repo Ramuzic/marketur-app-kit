@@ -9,6 +9,7 @@
   "version": "1.0.0",
   "onesignal_app_id": "",
   "company": "Acme Coffee LLC",
+  "nav": "floating",
   "colors": {
     "top": "#FFFFFF",
     "bar": "#FFFFFF",

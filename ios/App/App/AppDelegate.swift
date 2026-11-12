@@ -25,6 +25,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     #endif
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Live settings from the site (tabs, colors, bar style), used the next time the app opens.
+        AppConfig.refresh()
         #if canImport(OneSignalFramework)
         let appId = AppConfig.shared.oneSignalAppId
         if !appId.isEmpty {
