@@ -26,6 +26,11 @@ definitions:
         ICON_URL=$(node -e 'const c=require(process.argv[1]);process.stdout.write(c.icon_url||"")' "$PWD/customers/$CUSTOMER/customer.json")
         if [ -n "$ICON_URL" ]; then curl -fsSL "$ICON_URL" -o "customers/$CUSTOMER/icon.png" || echo "Could not fetch the icon, keeping the one in the repo"; fi
       fi
+      # A customer folder with an icon_url but no icon.png gets the icon from the site.
+      if [ ! -f "customers/$CUSTOMER/icon.png" ]; then
+        ICON_URL=$(node -e 'const c=require(process.argv[1]);process.stdout.write(c.icon_url||"")' "$PWD/customers/$CUSTOMER/customer.json")
+        if [ -n "$ICON_URL" ]; then curl -fsSL "$ICON_URL" -o "customers/$CUSTOMER/icon.png" || echo "Could not fetch the icon"; fi
+      fi
       node scripts/apply-customer.mjs "customers/$CUSTOMER"
       npm run icons
       sed 's/^export //' kit-out/env.sh | tr -d '"' >> "$CM_ENV"

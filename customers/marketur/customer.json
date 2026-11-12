@@ -1,0 +1,65 @@
+{
+  "slug": "marketur",
+  "name": "Marketur",
+  "short_name": "Marketur",
+  "bundle_id": "net.marketur.app",
+  "android_package": "net.marketur.app",
+  "site": "https://marketur.net",
+  "start": "https://marketur.net/",
+  "version": "1.0.0",
+  "company": "Qubi Labs LLC",
+  "nav": "fixed",
+  "icon_url": "https://marketur.s3.amazonaws.com/wp-content/uploads/2026/09/13182251/mlmpage-app-icon-3.png",
+  "onesignal_app_id": "",
+  "colors": {
+    "top": "#FFFFFF",
+    "bar": "#1E73BE",
+    "active": "#FFFFFF",
+    "inactive": "#B9D3EC",
+    "paper": "#FFFFFF",
+    "ink": "#0B1220",
+    "muted": "#5F6B7A"
+  },
+  "tabs": [
+    { "label": "Home", "url": "https://marketur.net/", "icon": "home", "match": ["/"] },
+    { "label": "Radar", "url": "https://marketur.net/opportunity-radar/", "icon": "search" },
+    { "label": "Discover", "url": "https://marketur.net/explore/", "icon": "grid" },
+    { "label": "Tools", "url": "https://marketur.net/tools/", "icon": "star" }
+  ],
+  "onboarding": [
+    { "icon": "home", "title": "Welcome to Marketur", "text": "Tools, plugins and services to build and grow your online business." },
+    { "icon": "bell", "title": "Stay in the loop", "text": "Turn on notifications for new tools, plugin updates and replies. You can change this any time.", "push": true }
+  ],
+  "shortcuts": [
+    { "label": "Tools", "url": "https://marketur.net/tools/", "icon": "star" }
+  ],
+  "features": { "apple_sign_in": false },
+  "store": {
+    "subtitle": "Tools to grow your business",
+    "promo": "Plugins, AI tools and services for WordPress businesses.",
+    "description": "Marketur gives you the tools, plugins and services to build and grow an online business on WordPress.\n\nWhat you can do in the app:\n- Browse and download Marketur plugins\n- Use the Marketur tools from your phone\n- Follow new opportunities on Radar\n- Order services like getting your site on the App Store\n- Get a note when something new comes out",
+    "keywords": "wordpress,plugins,business,marketing,tools,website,seo,ai,growth,apps",
+    "support_url": "https://marketur.net/",
+    "marketing_url": "https://marketur.net/",
+    "privacy_url": "https://marketur.net/privacy-policy/",
+    "category": "BUSINESS",
+    "secondary_category": "PRODUCTIVITY",
+    "copyright": "2026 Qubi Labs LLC",
+    "review": {
+      "first_name": "Robert",
+      "last_name": "",
+      "phone": "",
+      "email": "",
+      "demo_user": "",
+      "notes": "Marketur is a store and toolset for WordPress business owners."
+    },
+    "play": { "short_description": "Plugins, AI tools and services for WordPress businesses.", "contact_email": "", "contact_website": "https://marketur.net/" }
+  },
+  "screenshots": [
+    { "name": "01-onboarding", "wait": 8, "onboarding": true },
+    { "name": "02-home", "url": "https://marketur.net/", "wait": 14 },
+    { "name": "03-radar", "url": "https://marketur.net/opportunity-radar/", "wait": 14 },
+    { "name": "04-discover", "url": "https://marketur.net/explore/", "wait": 14 },
+    { "name": "05-tools", "url": "https://marketur.net/tools/", "wait": 14 }
+  ]
+}
