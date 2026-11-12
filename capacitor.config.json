@@ -1,0 +1,36 @@
+{
+  "appId": "com.acmecoffee.app",
+  "appName": "Acme Coffee",
+  "webDir": "www",
+  "server": {
+    "url": "https://acmecoffee.com/",
+    "cleartext": false,
+    "allowNavigation": [
+      "acmecoffee.com",
+      "*.acmecoffee.com"
+    ],
+    "errorPath": "offline.html"
+  },
+  "appendUserAgent": "exampleApp/1.0.0 MarketurApp/1.0",
+  "backgroundColor": "#FFFFFF",
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": true
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "style": "LIGHT"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#FFFFFF",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    }
+  }
+}

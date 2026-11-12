@@ -1,0 +1,71 @@
+{
+  "slug": "example",
+  "name": "Acme Coffee",
+  "short_name": "Acme Coffee",
+  "bundle_id": "com.acmecoffee.app",
+  "android_package": "com.acmecoffee.app",
+  "site": "https://acmecoffee.com",
+  "start": "https://acmecoffee.com/",
+  "version": "1.0.0",
+  "onesignal_app_id": "",
+  "company": "Acme Coffee LLC",
+  "colors": {
+    "top": "#FFFFFF",
+    "bar": "#FFFFFF",
+    "active": "#C2410C",
+    "inactive": "#9CA3AF",
+    "paper": "#FFFFFF",
+    "ink": "#111111",
+    "muted": "#6B7280"
+  },
+  "tabs": [
+    { "label": "Home", "url": "https://acmecoffee.com/", "icon": "home", "match": ["/"] },
+    { "label": "Shop", "url": "https://acmecoffee.com/shop/", "icon": "shop" },
+    { "label": "Blog", "url": "https://acmecoffee.com/blog/", "icon": "news" },
+    { "label": "Account", "url": "https://acmecoffee.com/my-account/", "icon": "account" }
+  ],
+  "onboarding": [
+    { "icon": "home", "title": "Welcome to Acme Coffee", "text": "Fresh roasts, new drops and your orders, all in one place." },
+    { "icon": "bell", "title": "Never miss a drop", "text": "Turn on notifications for new roasts and order updates. You can change this any time.", "push": true }
+  ],
+  "shortcuts": [
+    { "label": "Shop", "url": "https://acmecoffee.com/shop/", "icon": "shop" }
+  ],
+  "features": {
+    "apple_sign_in": false,
+    "camera_text": "",
+    "mic_text": ""
+  },
+  "store": {
+    "subtitle": "Fresh roasts to your door",
+    "promo": "New seasonal roasts every month.",
+    "description": "Order fresh coffee from Acme Coffee, follow new drops and track your orders.\n\nWhat you can do in the app:\n- Shop every roast and brewing kit\n- Get a note when a new roast drops\n- See your orders and reorder in two taps\n- Read brewing guides from our team",
+    "keywords": "coffee,roaster,beans,espresso,fresh,subscription",
+    "support_url": "https://acmecoffee.com/contact/",
+    "marketing_url": "https://acmecoffee.com/",
+    "privacy_url": "https://acmecoffee.com/privacy-policy/",
+    "category": "FOOD_AND_DRINK",
+    "secondary_category": "SHOPPING",
+    "copyright": "2026 Acme Coffee LLC",
+    "review": {
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "phone": "+15555550100",
+      "email": "jane@acmecoffee.com",
+      "demo_user": "",
+      "notes": "This app shows the Acme Coffee store. A demo account is in the sign-in fields if needed."
+    },
+    "play": {
+      "short_description": "Fresh coffee roasts, new drops and your orders.",
+      "contact_email": "jane@acmecoffee.com",
+      "contact_website": "https://acmecoffee.com/"
+    }
+  },
+  "screenshots": [
+    { "name": "01-onboarding", "wait": 8, "onboarding": true },
+    { "name": "02-home", "url": "https://acmecoffee.com/", "wait": 14 },
+    { "name": "03-shop", "url": "https://acmecoffee.com/shop/", "wait": 14 },
+    { "name": "04-blog", "url": "https://acmecoffee.com/blog/", "wait": 14 },
+    { "name": "05-account", "url": "https://acmecoffee.com/my-account/", "wait": 14 }
+  ]
+}

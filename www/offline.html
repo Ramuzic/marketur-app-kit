@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Acme Coffee</title>
+<style>
+  :root { --paper: #FFFFFF; --ink: #111111; --muted: #6B7280; --sign: #C2410C; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: -apple-system, system-ui, Roboto, sans-serif; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; text-align: center; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 22px; }
+  button { background: var(--sign); color: #fff; border: 0; border-radius: 999px; padding: 12px 26px; font-size: 16px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Can't reach Acme Coffee</h1>
+  <p>Check your connection and try again.</p>
+  <button onclick="retry()">Try again</button>
+</div>
+<script>
+  function retry() { location.href = "https://acmecoffee.com/"; }
+</script>
+</body>
+</html>

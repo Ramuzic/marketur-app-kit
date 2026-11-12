@@ -1,0 +1,169 @@
+# Marketur App Kit on Codemagic.
+# One repository builds every customer's app. Each build is started with two things:
+#   CUSTOMER = the folder name under customers/ (for example acme)
+#   the customer's environment group cust_<slug>, which holds their own keys:
+#     APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY
+#     CERTIFICATE_PRIVATE_KEY      (made once per customer: ssh-keygen -t rsa -b 2048 -m PEM -f cert_key -q -N "")
+#     REVIEW_DEMO_PASSWORD         (optional, the demo member's password for App Review)
+#     SHOT_USER, SHOT_PASS         (optional, a plain member for signed-in screenshots, never an admin)
+#     GCLOUD_SERVICE_ACCOUNT_CREDENTIALS   (Google Play service account JSON)
+#     CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD   (from kit-android-key)
+# Start builds with scripts/start-build.mjs (Codemagic API) or by hand: Start new build >
+# pick the workflow > Environment variables: CUSTOMER, and tick the cust_<slug> group.
+# Nothing secret is ever kept in this repository.
+
+definitions:
+  apply: &apply
+    name: Make the customer's app
+    script: |
+      set -e
+      test -n "$CUSTOMER" || { echo "Set CUSTOMER"; exit 1; }
+      npm ci
+      node scripts/apply-customer.mjs "customers/$CUSTOMER"
+      npm run icons
+      sed 's/^export //' kit-out/env.sh | tr -d '"' >> "$CM_ENV"
+
+workflows:
+  # 1. The iPhone app: registers the bundle id, makes the signing files, builds and sends it to TestFlight.
+  kit-ios:
+    name: Kit - iPhone to TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+    scripts:
+      - *apply
+      - name: Copy the settings into the iPhone project
+        script: npx cap sync ios
+      - name: Bundle id and capabilities (customer's Apple account)
+        script: node scripts/asc.mjs bundle "customers/$CUSTOMER"
+      - name: Signing files
+        script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files "$KIT_BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build number
+        script: |
+          N=$(node scripts/asc.mjs next-build "customers/$CUSTOMER")
+          echo "Build $N"
+          cd ios/App && agvtool new-version -all "$N"
+      - name: Build the app file
+        script: xcode-project build-ipa --project "ios/App/App.xcodeproj" --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - kit-out/**
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: false
+
+  # 2. Screenshots and the store pages: App Store (and Google Play when its key is there).
+  #    Run after kit-ios has finished processing, so the build can be attached too.
+  kit-store:
+    name: Kit - screenshots and store pages
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+    scripts:
+      - *apply
+      - name: Copy the settings into the iPhone project
+        script: npx cap sync ios
+      - name: iPhone screenshots
+        script: bash scripts/ios-screens.sh "customers/$CUSTOMER" kit-out/screens/ios
+      - name: Google Play pictures
+        script: |
+          pip3 install --quiet pillow || pip3 install --quiet --break-system-packages pillow
+          python3 scripts/store_art.py "customers/$CUSTOMER" kit-out/screens/ios kit-out/art
+      - name: App Store page
+        script: node scripts/asc.mjs listing "customers/$CUSTOMER" kit-out/screens/ios
+      - name: Google Play page
+        script: |
+          if [ -n "$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" ]; then
+            node scripts/play.mjs listing "customers/$CUSTOMER" kit-out/art || echo "Google Play page not saved, see above"
+          else
+            echo "No Google Play key in the group, skipped"
+          fi
+    artifacts:
+      - kit-out/**
+
+  # 3. Android upload key, once per customer. Copy the four values from the .txt artifact
+  #    into the customer's group as secure variables, then delete the artifact.
+  kit-android-key:
+    name: Kit - Android upload key (once per customer)
+    max_build_duration: 10
+    instance_type: linux_x2
+    scripts:
+      - name: Make the upload key
+        script: |
+          set -e
+          test -n "$CUSTOMER" || { echo "Set CUSTOMER"; exit 1; }
+          mkdir -p out
+          PASS=$(openssl rand -base64 30 | tr -dc 'A-Za-z0-9' | head -c 28)
+          keytool -genkeypair -v -keystore out/upload.jks -storetype JKS -alias upload \
+            -keyalg RSA -keysize 4096 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=$CUSTOMER app, O=$CUSTOMER, C=US"
+          SHA=$(keytool -list -v -keystore out/upload.jks -storepass "$PASS" -alias upload | grep -m1 'SHA256:' | sed 's/.*SHA256: //')
+          {
+            echo "Put these four in the group cust_$CUSTOMER as secure variables:"
+            echo "CM_KEYSTORE=$(base64 -w0 out/upload.jks)"
+            echo "CM_KEYSTORE_PASSWORD=$PASS"
+            echo "CM_KEY_ALIAS=upload"
+            echo "CM_KEY_PASSWORD=$PASS"
+            echo ""
+            echo "Upload key SHA-256 (for assetlinks.json, next to the Play app signing key): $SHA"
+          } > out/upload-key-$CUSTOMER.txt
+    artifacts:
+      - out/upload-key-*.txt
+
+  # 4. The Android app bundle (.aab) for Google Play. The very first upload is by hand in Play Console;
+  #    after that this sends each build to Internal testing as a draft.
+  kit-android:
+    name: Kit - Android for Google Play
+    max_build_duration: 45
+    instance_type: linux_x2
+    environment:
+      node: 22
+      java: 21
+    scripts:
+      - *apply
+      - name: Copy the settings into the Android project
+        script: npx cap sync android
+      - name: Upload key
+        script: |
+          set -e
+          test -n "$CM_KEYSTORE" || { echo "No CM_KEYSTORE in the group. Run kit-android-key first."; exit 1; }
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/upload.jks"
+          echo "CM_KEYSTORE_PATH=$CM_BUILD_DIR/upload.jks" >> "$CM_ENV"
+      - name: Build the signed app bundle
+        script: |
+          cd android && chmod +x gradlew && ./gradlew bundleRelease
+      - name: Send to Internal testing (after the first manual upload)
+        script: |
+          if [ -n "$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" ]; then
+            node scripts/play.mjs upload "customers/$CUSTOMER" "$(ls android/app/build/outputs/bundle/release/*.aab | head -1)" || echo "Not sent. Download the .aab from Artifacts and upload it in Play Console."
+          fi
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
+      - kit-out/**
+
+  # 5. Run first: registers the bundle id (so the customer can pick it in New App),
+  #    and any time after to see what is left before Submit.
+  kit-check:
+    name: Kit - register and check
+    max_build_duration: 5
+    instance_type: linux_x2
+    environment:
+      node: 22
+    scripts:
+      - name: Check
+        script: |
+          node scripts/asc.mjs bundle "customers/$CUSTOMER"
+          node scripts/asc.mjs check "customers/$CUSTOMER"

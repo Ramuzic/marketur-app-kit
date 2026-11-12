@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "start": "https://acmecoffee.com/",
+  "host": "acmecoffee.com",
+  "onesignal_app_id": "",
+  "colors": {
+    "top": "#FFFFFF",
+    "bar": "#FFFFFF",
+    "active": "#C2410C",
+    "inactive": "#9CA3AF",
+    "paper": "#FFFFFF",
+    "ink": "#111111",
+    "muted": "#6B7280"
+  },
+  "tabs": [
+    {
+      "label": "Home",
+      "url": "https://acmecoffee.com/",
+      "icon": "home",
+      "match": [
+        "/"
+      ]
+    },
+    {
+      "label": "Shop",
+      "url": "https://acmecoffee.com/shop/",
+      "icon": "shop"
+    },
+    {
+      "label": "Blog",
+      "url": "https://acmecoffee.com/blog/",
+      "icon": "news"
+    },
+    {
+      "label": "Account",
+      "url": "https://acmecoffee.com/my-account/",
+      "icon": "account"
+    }
+  ],
+  "onboarding": [
+    {
+      "icon": "home",
+      "title": "Welcome to Acme Coffee",
+      "text": "Fresh roasts, new drops and your orders, all in one place."
+    },
+    {
+      "icon": "bell",
+      "title": "Never miss a drop",
+      "text": "Turn on notifications for new roasts and order updates. You can change this any time.",
+      "push": true
+    }
+  ],
+  "offline": {
+    "title": "You're offline",
+    "text": "Check your connection and try again.",
+    "button": "Try again"
+  }
+}

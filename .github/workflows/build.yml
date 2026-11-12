@@ -1,0 +1,77 @@
+name: Build app
+
+# Builds both apps on every push, so problems show up here and not on someone's Mac.
+# Android: a debug APK you can install on a phone (download it from the run's Artifacts).
+# iPhone: a simulator build that proves the app compiles. Signed TestFlight builds come later.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: node scripts/apply-customer.mjs customers/example
+      - run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+      - name: Report what was built
+        working-directory: android
+        run: |
+          echo "::notice title=Android::$(ls app/build/outputs/apk/debug/*.apk | xargs -n1 basename) built, $(du -h app/build/outputs/apk/debug/*.apk | cut -f1)"
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath -q | grep -m1 -o "com.onesignal:OneSignal:[^ ]*" | sed 's/^/::notice title=Android OneSignal::/' || echo "::warning title=Android::OneSignal not found in dependencies"
+          for c in MainActivity OnboardingActivity NexAppPlugin MainApplication AppConfig; do
+            f=$(find app/build -name "$c.class" | head -1)
+            [ -n "$f" ] && echo "::notice title=Android compiled::$c" || echo "::error title=Android::$c was not compiled"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-example-android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+
+  ios:
+    # macos-15 builds with Xcode 16 (the classic bar); macos-26 with Xcode 26 (the floating glass bar).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/apply-customer.mjs customers/example
+      - run: npx cap sync ios
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build for the iPhone simulator (no signing)
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tee build.log | grep -E "error:|warning: .*(NexApp|RootView|Onboarding|AppConfig|AppBridge)|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Report what was built
+        working-directory: ios/App
+        run: |
+          echo "::notice title=Xcode (${{ matrix.os }})::$(xcodebuild -version | head -1)"
+          grep -q "BUILD SUCCEEDED" build.log && echo "::notice title=iPhone::BUILD SUCCEEDED"
+          for c in RootViewController OnboardingViewController NexAppPlugin AppBridgeViewController AppConfig SceneDelegate; do
+            grep -q "$c.swift" build.log && echo "::notice title=iPhone compiled::$c" || echo "::error title=iPhone::$c not compiled"
+          done
+          grep -q -i "onesignal" build.log && echo "::notice title=iPhone OneSignal::OneSignal package resolved and linked" || echo "::warning title=iPhone::OneSignal not seen in build log"
