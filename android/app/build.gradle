@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.nexurls.app"
+    namespace = "app.marketur.shell"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.acmecoffee.app"
