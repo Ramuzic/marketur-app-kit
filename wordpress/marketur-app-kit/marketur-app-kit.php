@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.8.1
+ * Version: 1.8.2
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.8.1' );
+define( 'MAK_VERSION', '1.8.2' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -167,6 +167,24 @@ final class Marketur_App_Kit {
         return ( $o['enabled'] ?? '' ) === '1';
     }
 
+    /**
+     * The page the app opens on, which follows the look.
+     * The NexURLs look opens on App Kit's own home screen. My PWA look opens on the Start page,
+     * or on the page PWA PowerUp opens on when the Start page is App Kit's home screen.
+     */
+    public static function start_url() {
+        $s = self::get();
+        $hp = (int) $s['home_page'];
+        $own = ( $hp && get_post_status( $hp ) === 'publish' ) ? (string) get_permalink( $hp ) : '';
+        if ( $s['look'] !== 'pwa' ) return $own ?: ( $s['start'] ?: home_url( '/' ) );
+        $start = (string) $s['start'];
+        if ( $start !== '' && ( $own === '' || untrailingslashit( $start ) !== untrailingslashit( $own ) ) ) return $start;
+        $m = (array) get_option( 'mpwa_manifest', [] );
+        $u = (string) ( $m['start_url'] ?? '' );
+        if ( $u !== '' ) return preg_match( '#^https?://#', $u ) ? $u : home_url( '/' . ltrim( $u, '/' ) );
+        return home_url( '/' );
+    }
+
     /** The launch screen color: the home screen's background, so opening the app feels seamless (the NexURLs way). */
     public static function splash_color() {
         $s = self::get();
@@ -213,7 +231,7 @@ final class Marketur_App_Kit {
         if ( 0 === strpos( $host, 'www.' ) ) $host = substr( $host, 4 );
         $nav = $s['look'] === 'pwa' ? 'none' : ( isset( self::navs()[ $s['nav'] ] ) ? $s['nav'] : 'floating' );
         $c = [ 'host' => $host, 'updated' => (int) $s['updated'], 'nav' => $nav, 'colors' => $s['colors'] ];
-        if ( $s['start'] ) $c['start'] = $s['start'];
+        $c['start'] = self::start_url();
         $tabs = self::tabs_list();
         if ( $tabs ) $c['tabs'] = $tabs;
         $ob = self::onboarding_list();
@@ -271,11 +289,14 @@ final class Marketur_App_Kit {
         if ( ! self::in_app() ) return;
         $hide = array_filter( array_map( 'trim', explode( "\n", (string) self::get( 'hide' ) ) ) );
         // The PWA look shows the site the way the installed PWA does, header and all; only install prompts are hidden.
-        if ( self::get( 'look' ) === 'pwa' ) $hide = array_filter( $hide, function ( $x ) { return stripos( $x, 'install' ) !== false; } );
+        $pwa = self::get( 'look' ) === 'pwa';
+        if ( $pwa ) $hide = array_filter( $hide, function ( $x ) { return stripos( $x, 'install' ) !== false; } );
         $sel  = implode( ',', array_map( function ( $x ) { return 'html.mak-app ' . $x; }, $hide ) );
         echo "<script>document.documentElement.classList.add('mak-app');</script>\n";
         echo '<style id="mak-app-css">';
         if ( $sel ) echo wp_strip_all_tags( $sel ) . '{display:none!important}';
+        // The NexURLs look has native tabs, so a PWA PowerUp bottom bar would be a second bar.
+        if ( ! $pwa ) echo 'html.mak-app #mpwa-nav,html.mak-app #mpwa-nav-spacer,html.mak-app [id^=mpwa-nav]{display:none!important}';
         echo 'html.mak-app body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}';
         echo 'html.mak-app{scroll-padding-bottom:80px}';
         echo wp_strip_all_tags( (string) self::get( 'css' ) );
@@ -386,9 +407,10 @@ final class Marketur_App_Kit {
     /** The app opens on a real home screen: App Kit's own, or one the site already has (Marketur App Home, NexURLs App Home). */
     public static function start_is_home() {
         $s = self::get();
+        $start = self::start_url();
         $hp = (int) $s['home_page'];
-        if ( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ) ) return true;
-        $id = url_to_postid( (string) $s['start'] );
+        if ( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( $start ) === untrailingslashit( (string) get_permalink( $hp ) ) ) return true;
+        $id = url_to_postid( $start );
         if ( ! $id || get_post_status( $id ) !== 'publish' ) return false;
         $c = (string) get_post_field( 'post_content', $id );
         foreach ( [ '[mak_app_home', '[marketur_app_home', '[nexurls_app_home' ] as $code ) if ( strpos( $c, $code ) !== false ) return true;
@@ -423,7 +445,7 @@ final class Marketur_App_Kit {
         return [
             'slug' => $slug, 'name' => $name, 'short_name' => mb_substr( $name, 0, 12 ),
             'bundle_id' => $s['bundle_id'], 'android_package' => $s['android_package'] ?: $s['bundle_id'],
-            'site' => home_url( '/' ), 'start' => $s['start'] ?: home_url( '/' ), 'version' => '1.0.0',
+            'site' => home_url( '/' ), 'start' => self::start_url(), 'version' => '1.0.0',
             'onesignal_app_id' => '', 'nav' => $s['look'] === 'pwa' ? 'none' : $s['nav'], 'colors' => $s['colors'], 'tabs' => array_slice( $tabs, 0, 5 ),
             'splash' => [ 'style' => $s['splash'], 'color' => self::splash_color(), 'dark' => self::splash_color() ],
             'onboarding' => [
@@ -528,7 +550,7 @@ final class Marketur_App_Kit {
         if ( $done ) delete_transient( 'mak_auto_done_' . get_current_user_id() );
         $connected = (bool) $s['hub_key'];
         $icon = get_site_icon_url( 128 );
-        $start = $s['start'] ?: home_url( '/' );
+        $start = self::start_url();
         ?>
 <div class="wrap mak-set">
   <div class="mak-head">
@@ -652,7 +674,7 @@ final class Marketur_App_Kit {
     <details class="mak-card mak-adv">
       <summary><h2>Advanced</h2><span class="mak-sub">local business details, what is hidden in the app, app ids, your key</span></summary>
       <table class="form-table">
-        <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made. If your site already has its own app home screen (like Marketur App Home), put its address here.' ); ?>
+        <?php $f( 'start', 'Start page', 'Used by My PWA look. The NexURLs look always opens on the home screen App Kit made. For My PWA look, put the page your PWA opens on here (like Marketur App Home). Leave it on the App Kit home screen and the app opens where PWA PowerUp opens.' ); ?>
         <tr><th>App feel</th><td>
           <label><input type="checkbox" name="mak[feel]" value="1" <?php checked( (int) $s['feel'], 1 ); ?>> The NexURLs feel inside the app: other websites open in an in-app browser, a loading bar between pages, buzzes when something posts, a rating prompt for happy users</label>
         </td></tr>

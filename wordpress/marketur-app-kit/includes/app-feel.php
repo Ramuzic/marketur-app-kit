@@ -1,10 +1,11 @@
 <?php
 /**
- * The app feel (App Kit 1.8.0), taken from the NexURLs app.
+ * The app feel (App Kit 1.8.2), taken from the NexURLs app.
  *
  * Inside the iPhone and Android app only (the website is unchanged):
  *  - links to other websites open in an in-app browser sheet with a Done button,
  *  - moving between pages shows a thin loading bar in the brand color and a soft fade, never a white flash,
+ *  - a light buzz on every tap (tiles, buttons, bottom bar, avatar, header icons) and a click buzz on switches and choices,
  *  - a success buzz when a comment, post or add-to-cart goes through, an error buzz when something fails,
  *  - no text selection or long-press previews on buttons, menus, tiles and pictures,
  *  - unread counts on the app icon and on a Chat tab (Marketur Chat and the community plugin),
@@ -31,6 +32,7 @@ final class MAK_App_Feel {
         $c = $s['colors'];
         echo '<style id="mak-feel-css">'
             . 'html.mak-app a,html.mak-app button,html.mak-app [role="button"],html.mak-app img,html.mak-app label,html.mak-app nav,html.mak-app .mka-tile,html.mak-app .mpwa-nav-link{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}'
+            . 'html.mak-app .mka-card,html.mak-app .mka-post,html.mak-app .mka-topic,html.mak-app .mka-av,html.mak-app .mpwa-nav-link{transition:transform .12s ease}html.mak-app .mka-card:active,html.mak-app .mka-post:active,html.mak-app .mka-topic:active,html.mak-app .mka-av:active,html.mak-app .mpwa-nav-link:active{transform:scale(.96)}'
             . 'html.mak-app input,html.mak-app textarea,html.mak-app [contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}'
             . '#mak-bar{position:fixed;left:0;top:0;height:3px;width:0;background:' . esc_attr( $c['active'] ) . ';z-index:2147483647;opacity:0;pointer-events:none;box-shadow:0 0 8px ' . esc_attr( $c['active'] ) . '}'
             . '#mak-bar.go{opacity:1;width:82%;transition:width 2.4s cubic-bezier(.1,.7,.2,1),opacity .15s}'
@@ -47,7 +49,7 @@ final class MAK_App_Feel {
         if ( ! Marketur_App_Kit::in_app() ) return;
         $s = Marketur_App_Kit::get();
         if ( empty( $s['feel'] ) ) return;
-        $cfg = [ 'bar' => $s['colors']['bar'], 'active' => $s['colors']['active'], 'home' => (string) wp_parse_url( $s['start'] ?: home_url( '/' ), PHP_URL_PATH ) ];
+        $cfg = [ 'bar' => $s['colors']['bar'], 'active' => $s['colors']['active'], 'home' => (string) wp_parse_url( Marketur_App_Kit::start_url(), PHP_URL_PATH ) ];
         ?>
 <script id="mak-feel-js">
 (function () {
@@ -55,7 +57,21 @@ final class MAK_App_Feel {
     var C = window.Capacitor;
     if (!C || typeof C.nativePromise !== 'function') return;
     function call(p, m, o) { try { return C.nativePromise(p, m, o || {}); } catch (e) { return Promise.reject(e); } }
-    function hap(s) { call('NexApp', 'haptic', { style: s }).catch(function () {}); }
+    var lastHap = 0;
+    function hap(s) { var t = Date.now(); if (s === 'light' || s === 'selection') { if (t - lastHap < 120) return; lastHap = t; } call('NexApp', 'haptic', { style: s }).catch(function () {}); }
+
+    /* A light tap buzz on everything you can press, the NexURLs way: home tiles, buttons, the bottom bar, the avatar and header icons, menus. */
+    var TAP = 'a[href],button,[role="button"],[role="tab"],[role="menuitem"],[role="switch"],summary,label,[onclick],input[type="submit"],input[type="button"],.mka-tile,.mka-card,.mka-post,.mka-topic,.mka-av,.mpwa-nav-link,[class*="avatar"],[class*="icon-btn"],[class*="menu-toggle"],[class*="hamburger"]';
+    document.addEventListener('click', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest(TAP) : null;
+        if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+        if (el.tagName === 'LABEL' && el.control && /^(text|email|password|search|tel|url|number)$/.test(el.control.type || '')) return;
+        hap('light');
+    }, true);
+    document.addEventListener('change', function (e) {
+        var t = e.target; if (!t || !t.tagName) return;
+        if (t.tagName === 'SELECT' || t.type === 'checkbox' || t.type === 'radio' || t.type === 'range') hap('selection');
+    }, true);
     function bare(h) { h = String(h || '').toLowerCase(); return h.indexOf('www.') === 0 ? h.slice(4) : h; }
     var HOME = bare(location.host);
     function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return null; }

@@ -40,7 +40,7 @@ final class MAK_AI_Tools {
                 'type'       => 'object',
                 'properties' => [
                     'app_name'    => [ 'type' => 'string', 'description' => 'Up to 30 characters. Needs a new build.' ],
-                    'start'       => [ 'type' => 'string', 'description' => 'Full URL on this site the app opens on.' ],
+                    'start'       => [ 'type' => 'string', 'description' => 'Full URL on this site. Used by My PWA look (look pwa). The NexURLs look always opens on the App Kit home screen.' ],
                     'site_brief'  => [ 'type' => 'string', 'description' => 'The note on what the business is, who it is for and why people open the app. Everything written for the app starts from it. Change it when the owner corrects it.' ],
                     'nav'         => [ 'type' => 'string', 'enum' => array_keys( Marketur_App_Kit::navs() ), 'description' => 'Bar style.' ],
                     'tabs'        => [ 'type' => 'string', 'description' => 'One tab per line: Label|/path/|icon' ],
@@ -212,7 +212,7 @@ final class MAK_AI_Tools {
         $pp = (int) get_option( 'wp_page_for_privacy_policy' );
         return [
             'name'        => $s['app_name'],
-            'start'       => $s['start'],
+            'start'       => Marketur_App_Kit::start_url(),
             'nav'         => $s['look'] === 'pwa' ? 'none' : $s['nav'],
             'colors'      => $s['colors'],
             'splash'      => [ 'style' => $s['splash'], 'color' => Marketur_App_Kit::splash_color(), 'dark' => Marketur_App_Kit::splash_color() ],
