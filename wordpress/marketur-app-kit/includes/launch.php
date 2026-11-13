@@ -53,7 +53,10 @@ final class MAK_Launch {
                 $fp = $r['status']['keys']['android_upload_sha256'];
                 if ( strpos( $have, $fp ) === false ) { $s['android_sha256'] = trim( $have . "\n" . $fp ); update_option( MAK_OPT, $s ); }
             }
-        } elseif ( in_array( $op, [ 'check', 'ios', 'store', 'android' ], true ) ) {
+        } elseif ( $op === 'home' ) {
+            $id = class_exists( 'MAK_Home' ) ? MAK_Home::ensure_page() : 0;
+            $r = $id ? [ 'note' => 'Made. The app opens on it.' ] : new WP_Error( 'home', 'Could not make the page.' );
+        } elseif ( in_array( $op, [ 'check', 'ios', 'store', 'android', 'submit' ], true ) ) {
             $r = MAK_AI_Tools::build( [ 'kind' => $op, 'confirm' => true ] );
         } elseif ( $op === 'download' ) {
             $r = MAK_AI_Tools::hub( 'download' );
@@ -108,6 +111,18 @@ final class MAK_Launch {
   <h1>Launch your app</h1>
   <p class="description">Every step to get <?php echo $name ?: 'your app'; ?> into the App Store and Google Play, in order. Stuck on one? Ask the <a href="<?php echo esc_url( admin_url( 'admin.php?page=mak-assistant' ) ); ?>">Assistant</a> and it will walk you through it.</p>
   <?php if ( $err ) echo '<div class="notice notice-error inline"><p>' . esc_html( $err ) . '</p></div>'; ?>
+  <?php
+  $dfy = $connected ? MAK_AI_Tools::hub( 'dfy' ) : null;
+  if ( is_array( $dfy ) && ( $dfy['email'] || $dfy['order_url'] ) ) {
+      echo '<div class="mk-dfy"><strong>' . ( $dfy['done_for_you'] ? 'Marketur is doing this for you.' : 'Rather have us do all of this?' ) . '</strong> ';
+      if ( $dfy['done_for_you'] && $dfy['email'] ) {
+          echo 'Invite <code>' . esc_html( $dfy['email'] ) . '</code> in <a href="https://appstoreconnect.apple.com/access/users" target="_blank" rel="noopener">App Store Connect &gt; Users and Access</a> (click +, role <strong>Admin</strong>) and in <a href="https://play.google.com/console" target="_blank" rel="noopener">Play Console &gt; Users and permissions</a> (Invite new users, <strong>Admin</strong> for your app). We take it from there and tell you when your app is live. You only pay Apple and Google and accept their terms yourself.';
+      } elseif ( $dfy['order_url'] ) {
+          echo 'We build it, publish it and keep it updated for you. <a class="button" href="' . esc_url( $dfy['order_url'] ) . '" target="_blank" rel="noopener">Have us do it</a>';
+      }
+      echo '</div>';
+  }
+  ?>
 
   <h2>iPhone</h2>
   <?php
@@ -115,6 +130,9 @@ final class MAK_Launch {
   $list = '';
   foreach ( $checks as $c ) if ( ! $c['ok'] ) $list .= '<li>' . esc_html( $c['label'] ) . '<br><span class="description">' . esc_html( $c['fix'] ) . '</span></li>';
   $step( 'ready', 'Get the site ready for review', $ready, $ready ? '<p>All the checks pass.</p>' : '<p>Apple and Google reject apps for these, so fix them first:</p><ul class="mk-ul">' . $list . '</ul>' );
+  $hp = (int) Marketur_App_Kit::get( 'home_page' );
+  $has_home = $hp && get_post_status( $hp ) === 'publish';
+  $step( 'home', 'Give the app its own home screen', $has_home, '<p>Required. Apple turns down apps that are just the website, so your app opens on a home screen built from your own posts, products and links. Pick the look under <a href="' . esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ) . '">Settings &gt; App Kit</a> (or ask the Assistant), then:</p>' . ( $has_home ? '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See it</a></p>' : $btn( 'home', 'Make the home screen' ) ) );
   $step( 'apple_account', 'Apple Developer account', false, '<p>You need your own account; it costs $99 a year. Go to <a href="https://developer.apple.com/programs/enroll/" target="_blank" rel="noopener">developer.apple.com/programs/enroll</a> and enroll. For a business, enroll as an <strong>organization</strong> (it needs a free D-U-N-S number and can take a few days); otherwise as an individual. Tick Done once Apple says you are in.</p>', true );
   $step( 'apple_key', 'Give Marketur access to build your app', ! empty( $keys['apple'] ),
       '<ol class="mk-ol"><li>Open <a href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noopener">App Store Connect &gt; Users and Access &gt; Integrations &gt; App Store Connect API</a>. If it asks, click <strong>Request Access</strong> and accept.</li>'
@@ -133,7 +151,8 @@ final class MAK_Launch {
   $step( 'submitted', 'Your last part, then submit', false,
       '<ol class="mk-ol"><li>In App Store Connect open your app, then <strong>App Privacy</strong> in the left list. Click <strong>Get Started</strong>. If people can sign up, say yes to collecting data, tick <strong>Email Address</strong> and <strong>Name</strong> (under Contact Info) and <strong>User ID</strong>, each used for <strong>App Functionality</strong>, linked to the user, not used for tracking. Add anything else your site really collects (payments, photos, location). Publish.</li>'
       . '<li>Open <strong>Pricing and Availability</strong> and check the countries.</li>'
-      . '<li>Back on the version page, look it over, then click <strong>Add for Review</strong> and <strong>Submit</strong>. Apple usually answers in one to three days. If they reject it, paste their message to the Assistant.</li></ol>', true );
+      . '<li>Look over the version page in App Store Connect, then press Submit here (or tell the Assistant to submit). Apple usually answers in one to three days. If they reject it, paste their message to the Assistant.</li></ol>'
+      . $btn( 'submit', 'Submit for review', 'Send your app to Apple for review now? Make sure App Privacy is done first.' ) . $build_line( 'submit' ), true );
   ?>
 
   <h2>Android</h2>
@@ -176,6 +195,7 @@ final class MAK_Launch {
 .mk-l .mk-b{font-size:12px;color:#50575e}.mk-l .mk-b-failed{color:#b32d2e}.mk-l .mk-b-finished{color:#007017}
 .mk-l .mk-tick{display:inline-block;margin-top:6px;font-weight:600}
 .mk-l h2{margin-top:26px}
+.mk-l .mk-dfy{background:#f0f6fc;border:1px solid #c5d9ed;border-radius:10px;padding:12px 16px;margin:12px 0 4px;max-width:880px;line-height:1.6}
 </style>
 <script>
 (function(){

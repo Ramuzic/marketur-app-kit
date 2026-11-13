@@ -51,9 +51,22 @@ final class MAK_AI_Tools {
                     'description' => [ 'type' => 'string', 'description' => 'Store description, up to 4000 characters.' ],
                     'keywords'    => [ 'type' => 'string', 'description' => 'App Store keywords, comma separated, up to 100 characters.' ],
                     'live'        => [ 'type' => 'boolean', 'description' => 'Turn live settings on or off.' ],
+                    'home_template' => [ 'type' => 'string', 'enum' => [ 'dashboard', 'store', 'feed', 'services' ], 'description' => 'The app home screen look: dashboard (greeting, tiles, latest posts), store (products), feed (posts as cards), services (call, book, directions, hours).' ],
+                    'home_headline' => [ 'type' => 'string', 'description' => 'Greeting on the home screen for visitors.' ],
+                    'home_tiles'    => [ 'type' => 'string', 'description' => 'Home screen shortcut tiles, up to 8 lines: Label|/path/|icon' ],
+                    'home_phone'    => [ 'type' => 'string' ], 'home_book' => [ 'type' => 'string', 'description' => 'Booking URL' ],
+                    'home_address'  => [ 'type' => 'string' ], 'home_email' => [ 'type' => 'string' ],
+                    'home_hours'    => [ 'type' => 'string', 'description' => 'Opening hours, one line per day or range.' ],
                 ],
             ],
             'callback'    => [ __CLASS__, 'update' ],
+            'write'       => true,
+            'cap'         => 'manage_options',
+        ];
+        $tools['app_make_home'] = [
+            'description' => 'Make the app home screen page (if it does not exist yet) and set the app to open on it. Every app needs one: Apple turns down apps that are just the website. Pick the look with app_update_settings home_template.',
+            'inputSchema' => [ 'type' => 'object', 'properties' => (object) [] ],
+            'callback'    => function () { $id = MAK_Home::ensure_page(); return $id ? [ 'ok' => true, 'page' => get_permalink( $id ), 'note' => 'The app opens on this page' . ( Marketur_App_Kit::get( 'live' ) ? ' from its next launch.' : ' once live settings are on or after the next build.' ) ] : new WP_Error( 'home', 'Could not make the page.' ); },
             'write'       => true,
             'cap'         => 'manage_options',
         ];
@@ -72,11 +85,11 @@ final class MAK_AI_Tools {
             'cap'         => 'manage_options',
         ];
         $tools['app_build'] = [
-            'description' => 'Start a new build of the phone app through Marketur. kind: ios (new iPhone build to TestFlight), store (new screenshots and store pages), android (new Google Play build), check (what is left before submitting). Sends the current app settings with it. Builds are limited per month by the plan, so only build when the name, icon, store text or something native changed; tabs, colors and bar style do not need one when live settings are on. Never submits the app for review.',
+            'description' => 'Start a new build of the phone app through Marketur. kind: ios (new iPhone build to TestFlight), store (new screenshots and store pages), android (new Google Play build), check (register the app with Apple, then what is left before submitting), submit (send the iPhone version to App Review: ONLY when the owner has clearly told you to submit in this conversation, after App Privacy is done in App Store Connect). Sends the current app settings with it. Builds are limited per month by the plan, so only build when the name, icon, store text or something native changed; tabs, colors and bar style do not need one when live settings are on. It only submits for review with kind submit.',
             'inputSchema' => [
                 'type'       => 'object',
                 'properties' => [
-                    'kind'    => [ 'type' => 'string', 'enum' => [ 'ios', 'store', 'android', 'check' ] ],
+                    'kind'    => [ 'type' => 'string', 'enum' => [ 'ios', 'store', 'android', 'check', 'submit' ] ],
                     'confirm' => [ 'type' => 'boolean', 'description' => 'Must be true to start. Without it, says what would happen and how many builds are left.' ],
                 ],
                 'required'   => [ 'kind' ],
@@ -118,7 +131,7 @@ final class MAK_AI_Tools {
     public static function update( $a ) {
         $before = Marketur_App_Kit::get();
         $in = [];
-        foreach ( [ 'app_name', 'start', 'nav', 'tabs', 'colors', 'onboarding', 'hide', 'css', 'subtitle', 'description', 'keywords', 'live' ] as $k ) {
+        foreach ( [ 'app_name', 'start', 'nav', 'tabs', 'colors', 'onboarding', 'hide', 'css', 'subtitle', 'description', 'keywords', 'live', 'home_template', 'home_headline', 'home_tiles', 'home_phone', 'home_book', 'home_address', 'home_email', 'home_hours' ] as $k ) {
             if ( array_key_exists( $k, $a ) ) $in[ $k ] = $a[ $k ];
         }
         if ( ! $in ) return new WP_Error( 'nothing', 'Pass at least one field to change.' );
@@ -155,7 +168,8 @@ final class MAK_AI_Tools {
         $prev = get_option( self::PREV );
         if ( ! is_array( $prev ) ) return new WP_Error( 'no_prev', 'There is no earlier version to go back to.' );
         $now = Marketur_App_Kit::get();
-        $prev['hub_key'] = $now['hub_key'] ?? '';
+        // Pages and the Marketur key are not part of an undo.
+        foreach ( [ 'hub_key', 'home_page', 'delete_page' ] as $keep ) $prev[ $keep ] = $now[ $keep ] ?? '';
         $prev['updated'] = time();
         update_option( MAK_OPT, $prev );
         update_option( self::PREV, $now, false );
@@ -213,7 +227,7 @@ final class MAK_AI_Tools {
 
     public static function build( $a ) {
         $kind = (string) ( $a['kind'] ?? '' );
-        if ( ! in_array( $kind, [ 'ios', 'store', 'android', 'check' ], true ) ) return new WP_Error( 'bad_kind', 'kind is ios, store, android or check.' );
+        if ( ! in_array( $kind, [ 'ios', 'store', 'android', 'check', 'submit' ], true ) ) return new WP_Error( 'bad_kind', 'kind is ios, store, android, check or submit.' );
         if ( empty( $a['confirm'] ) ) {
             $q = self::hub( 'quota' );
             return [ 'dry_run' => true, 'kind' => $kind, 'quota' => is_wp_error( $q ) ? $q->get_error_message() : $q, 'note' => 'Nothing started. Call again with confirm=true.' ];

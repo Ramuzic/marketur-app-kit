@@ -6,8 +6,9 @@
 //   node scripts/asc.mjs next-build customers/<slug>         prints the next free build number
 //   node scripts/asc.mjs listing   customers/<slug> [shots]  fills in the whole store page, uploads screenshots
 //   node scripts/asc.mjs check     customers/<slug>          says what is still missing before Submit
+//   node scripts/asc.mjs submit    customers/<slug>          sends the version to App Review (only when the owner asked)
 //
-// It never presses Submit for Review. The customer (or the operator, with the customer's OK) does that.
+// submit is only ever run when the owner pressed Submit on the Launch page or told the assistant to.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -220,7 +221,38 @@ async function check() {
   if (b) ok('newest build ' + b.attributes.version + ' (' + b.attributes.processingState + ')'); else miss('no build uploaded yet');
 }
 
-const run = { bundle, 'next-build': nextBuild, listing, check }[cmd];
+async function submit() {
+  const app = await findApp();
+  if (!app) throw new Error('App Store Connect has no app for ' + c.bundle_id + ' yet.');
+  const v = (await api('GET', '/v1/apps/' + app.id + '/appStoreVersions?filter[platform]=IOS&limit=10')).data
+    .find((x) => EDITABLE.includes(x.attributes.appStoreState || x.attributes.appVersionState));
+  if (!v) throw new Error('There is no version waiting to be submitted (it may already be in review).');
+  // A build must be attached.
+  let b = null;
+  try { b = (await api('GET', '/v1/appStoreVersions/' + v.id + '/build')).data; } catch (e) { b = null; }
+  if (!b) {
+    b = (await api('GET', '/v1/builds?filter[app]=' + app.id + '&filter[processingState]=VALID&sort=-uploadedDate&limit=1')).data[0];
+    if (!b) throw new Error('No processed build yet. Build the iPhone app first and wait for Apple to finish processing it.');
+    await api('PATCH', '/v1/appStoreVersions/' + v.id + '/relationships/build', { data: { type: 'builds', id: b.id } });
+    ok('attached build ' + b.attributes.version);
+  }
+  // Reuse an open submission if there is one, otherwise make one.
+  let sub = null;
+  try {
+    const open = await api('GET', '/v1/reviewSubmissions?filter[app]=' + app.id + '&filter[platform]=IOS&filter[state]=READY_FOR_REVIEW&limit=1');
+    sub = open.data && open.data[0];
+  } catch (e) { sub = null; }
+  if (!sub) sub = (await api('POST', '/v1/reviewSubmissions', { data: { type: 'reviewSubmissions', attributes: { platform: 'IOS' }, relationships: { app: { data: { type: 'apps', id: app.id } } } } })).data;
+  try {
+    await api('POST', '/v1/reviewSubmissionItems', { data: { type: 'reviewSubmissionItems', relationships: { reviewSubmission: { data: { type: 'reviewSubmissions', id: sub.id } }, appStoreVersion: { data: { type: 'appStoreVersions', id: v.id } } } } });
+  } catch (e) {
+    if (!/already|exists|409/i.test(e.message)) throw new Error('Apple would not take the version for review: ' + e.message + ' (usually App Privacy or another required field is not finished in App Store Connect).');
+  }
+  await api('PATCH', '/v1/reviewSubmissions/' + sub.id, { data: { type: 'reviewSubmissions', id: sub.id, attributes: { submitted: true } } });
+  ok('submitted version ' + v.attributes.versionString + ' for App Review');
+}
+
+const run = { bundle, 'next-build': nextBuild, listing, check, submit }[cmd];
 if (!run) { console.error('Unknown command ' + cmd); process.exit(1); }
 try {
   await run();

@@ -166,6 +166,23 @@ workflows:
       - android/app/build/outputs/bundle/release/*.aab
       - kit-out/**
 
+  # 6. Sends the iPhone version to App Review. Only started when the owner pressed Submit
+  #    on the Launch page or told the assistant to.
+  kit-submit:
+    name: Kit - submit for App Review
+    max_build_duration: 10
+    instance_type: linux_x2
+    environment:
+      node: 22
+    scripts:
+      - name: Get the customer's settings
+        script: |
+          set -e
+          test -n "$CUSTOMER" || { echo "Set CUSTOMER"; exit 1; }
+          if [ -n "$KIT_CONFIG_URL" ]; then mkdir -p "customers/$CUSTOMER"; curl -fsSL "$KIT_CONFIG_URL" -o "customers/$CUSTOMER/customer.json"; fi
+      - name: Submit
+        script: node scripts/asc.mjs submit "customers/$CUSTOMER"
+
   # 5. Run first: registers the bundle id (so the customer can pick it in New App),
   #    and any time after to see what is left before Submit.
   kit-check:

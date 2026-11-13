@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.4.0' );
+define( 'MAK_VERSION', '1.5.0' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -34,6 +34,12 @@ final class Marketur_App_Kit {
         add_action( 'admin_init', [ $this, 'save' ] );
         add_action( 'admin_post_mak_export', [ $this, 'export' ] );
         add_action( 'admin_post_mak_make_delete_page', [ $this, 'make_delete_page' ] );
+        add_action( 'admin_post_mak_make_home', function () {
+            if ( ! current_user_can( 'manage_options' ) ) wp_die( 'No' );
+            check_admin_referer( 'mak_make_home' );
+            if ( class_exists( 'MAK_Home' ) ) MAK_Home::ensure_page();
+            wp_safe_redirect( admin_url( 'options-general.php?page=marketur-app-kit&made_home=1' ) ); exit;
+        } );
         add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $l ) {
             array_unshift( $l, '<a href="' . esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ) . '">Settings</a>' );
             return $l;
@@ -62,6 +68,15 @@ final class Marketur_App_Kit {
             'live'           => 0,
             'updated'        => 0,
             'hub_key'        => '',
+            'home_template'  => 'dashboard',
+            'home_page'      => 0,
+            'home_headline'  => '',
+            'home_tiles'     => '',
+            'home_phone'     => '',
+            'home_book'      => '',
+            'home_address'   => '',
+            'home_hours'     => '',
+            'home_email'     => '',
             'description'    => '',
             'subtitle'       => '',
             'keywords'       => '',
@@ -183,9 +198,12 @@ final class Marketur_App_Kit {
      */
     public static function update_app( array $in ) {
         $s = self::get();
-        foreach ( [ 'app_name', 'subtitle', 'keywords' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_text_field( $in[ $k ] );
+        foreach ( [ 'app_name', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_text_field( $in[ $k ] );
+        if ( isset( $in['home_book'] ) ) $s['home_book'] = esc_url_raw( $in['home_book'] );
+        if ( isset( $in['home_email'] ) ) $s['home_email'] = sanitize_email( $in['home_email'] );
+        if ( isset( $in['home_template'] ) && class_exists( 'MAK_Home' ) && isset( MAK_Home::templates()[ $in['home_template'] ] ) ) $s['home_template'] = $in['home_template'];
         if ( isset( $in['start'] ) ) $s['start'] = esc_url_raw( $in['start'] );
-        foreach ( [ 'tabs', 'onboarding', 'description', 'hide' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] );
+        foreach ( [ 'tabs', 'onboarding', 'description', 'hide', 'home_tiles', 'home_hours' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] );
         if ( isset( $in['css'] ) ) $s['css'] = wp_strip_all_tags( $in['css'] );
         if ( isset( $in['nav'] ) && isset( self::navs()[ $in['nav'] ] ) ) $s['nav'] = $in['nav'];
         if ( isset( $in['live'] ) ) $s['live'] = $in['live'] ? 1 : 0;
@@ -313,6 +331,8 @@ final class Marketur_App_Kit {
         $add( $s['apple_team_id'] && $s['bundle_id'], 'iPhone links open in the app (Apple Team ID set)', 'Add the Apple Team ID (developer.apple.com > Membership).' );
         $add( (bool) trim( (string) $s['android_sha256'] ), 'Android links open in the app (SHA-256 set)', 'Play Console > Test and release > App integrity > App signing key SHA-256, paste it below.' );
         $add( strlen( wp_strip_all_tags( (string) $s['description'] ) ) >= 200, 'Store description written (200+ characters)', 'Write what people can do in the app. It goes on both store pages.' );
+        $hp = (int) $s['home_page'];
+        $add( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ), 'The app opens on its own home screen', 'Apple turns down apps that are just the website. Pick a home screen look below and press Make the app home screen.' );
         $add( ! ( class_exists( 'WooCommerce' ) && self::sells_digital() ), 'No digital products sold on the site', 'You sell downloads or virtual products. Apple wants those bought with in-app purchase inside the iPhone app; ask us before launch.' );
         return $out;
     }
@@ -386,7 +406,12 @@ final class Marketur_App_Kit {
         check_admin_referer( 'mak_save' );
         $in = wp_unslash( $_POST['mak'] ?? [] );
         $s  = self::get();
-        foreach ( [ 'app_name', 'ua_tag', 'bundle_id', 'android_package', 'apple_team_id', 'subtitle', 'keywords' ] as $k ) $s[ $k ] = sanitize_text_field( $in[ $k ] ?? '' );
+        foreach ( [ 'app_name', 'ua_tag', 'bundle_id', 'android_package', 'apple_team_id', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address' ] as $k ) $s[ $k ] = sanitize_text_field( $in[ $k ] ?? '' );
+        $s['home_book'] = esc_url_raw( $in['home_book'] ?? '' );
+        $s['home_email'] = sanitize_email( $in['home_email'] ?? '' );
+        $s['home_tiles'] = sanitize_textarea_field( $in['home_tiles'] ?? '' );
+        $s['home_hours'] = sanitize_textarea_field( $in['home_hours'] ?? '' );
+        if ( class_exists( 'MAK_Home' ) && isset( MAK_Home::templates()[ $in['home_template'] ?? '' ] ) ) $s['home_template'] = $in['home_template'];
         $s['start'] = esc_url_raw( $in['start'] ?? '' );
         $s['support_email'] = sanitize_email( $in['support_email'] ?? '' );
         foreach ( [ 'hide', 'tabs', 'android_sha256', 'description' ] as $k ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] ?? '' );
@@ -457,6 +482,28 @@ final class Marketur_App_Kit {
         <p class="description">Top: the bar behind the clock. Bar: the tab bar. Active and Inactive: the tab icons. Paper and Ink: the onboarding and offline screens.</p>
       </td></tr>
     </table>
+    <h2>App home screen</h2>
+    <?php if ( isset( $_GET['made_home'] ) ) echo '<div class="notice notice-success inline"><p>The App Home page is made and the app opens on it.</p></div>'; ?>
+    <table class="form-table">
+      <tr><th>Look</th><td>
+        <?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) echo '<label style="display:block;margin:0 0 6px"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '> ' . esc_html( $v ) . '</label>'; ?>
+        <p>
+          <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) : ?>
+            <a class="button" href="<?php echo esc_url( get_permalink( $hp ) ); ?>" target="_blank">See the home screen</a>
+          <?php else : ?>
+            <a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_make_home' ), 'mak_make_home' ) ); ?>">Make the app home screen</a>
+          <?php endif; ?>
+        </p>
+        <p class="description">Required. Apple turns down apps that are just the website, so the app opens on this screen. It uses your own posts, products and links.</p>
+      </td></tr>
+      <?php $f( 'home_headline', 'Greeting', 'Shown to visitors. Members see Hi and their first name.' ); ?>
+      <?php $t( 'home_tiles', 'Shortcut tiles', 'Up to 8, one per line: <code>Label|/path/|icon</code>. Empty uses the tabs.', 4 ); ?>
+      <?php $f( 'home_phone', 'Phone (Local business look)' ); ?>
+      <?php $f( 'home_book', 'Booking link (Local business look)' ); ?>
+      <?php $f( 'home_address', 'Address (Local business look)' ); ?>
+      <?php $f( 'home_email', 'Email (Local business look)' ); ?>
+      <?php $t( 'home_hours', 'Opening hours (Local business look)', 'One line per day or range.', 3 ); ?>
+    </table>
     <h2>Store pages</h2>
     <table class="form-table">
       <?php $f( 'subtitle', 'Subtitle', 'Up to 30 characters, under the name on the App Store. Also the start of the Google Play short description.' ); ?>
@@ -507,3 +554,5 @@ Marketur_App_Kit::instance();
 require_once __DIR__ . '/includes/ai-tools.php';
 require_once __DIR__ . '/includes/assistant.php';
 require_once __DIR__ . '/includes/launch.php';
+require_once __DIR__ . '/includes/home.php';
+require_once __DIR__ . '/includes/starter.php';
