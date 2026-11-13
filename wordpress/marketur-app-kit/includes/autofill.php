@@ -1,13 +1,15 @@
 <?php
 /**
- * Fill it in for me (App Kit 1.6.0, the site study 1.7.0).
+ * Fill it in for me (App Kit 1.6.0, the site study 1.7.0, the NexURLs look 1.8.0).
  *
  * Most of the App Kit settings can be worked out from the site itself or from the details
  * the customer already sent with their order, so nobody should have to type them twice:
  *
  *   order    the app name, bundle id, tabs, colors, first launch screens and store text from
  *            the Marketur order (the form they filled in after paying)
- *   colors   the site's own brand colors (Elementor global colors, then Astra's palette)
+ *   colors   the site's own brand colors (Elementor global colors, then Astra's palette), laid out
+ *            the NexURLs way: a warm paper page, a dark tab bar, the brand as the signal color,
+ *            and a plain launch screen in the page color
  *   tabs     the tab bar from the site's main menu
  *   privacy  publishes the privacy policy page (WordPress's own template when there is none)
  *   delete   makes the Delete Your Account page
@@ -93,29 +95,40 @@ final class MAK_Autofill {
     }
 
     public static function colors() {
-        $primary = $text = '';
+        $primary = $text = $page = '';
         $kit = (int) get_option( 'elementor_active_kit' );
         if ( $kit ) {
             $ps = get_post_meta( $kit, '_elementor_page_settings', true );
             foreach ( (array) ( $ps['system_colors'] ?? [] ) as $c ) {
                 if ( ( $c['_id'] ?? '' ) === 'primary' && ! empty( $c['color'] ) ) $primary = $c['color'];
                 if ( ( $c['_id'] ?? '' ) === 'text' && ! empty( $c['color'] ) ) $text = $c['color'];
+                if ( ( $c['_id'] ?? '' ) === 'accent' && ! empty( $c['color'] ) && ! $primary ) $primary = $c['color'];
             }
+            if ( ! empty( $ps['body_background_color'] ) ) $page = $ps['body_background_color'];
         }
         if ( ! $primary ) {
             $as = get_option( 'astra-settings' );
             $pal = $as['global-color-palette']['palette'] ?? [];
             if ( ! empty( $pal[0] ) ) $primary = $pal[0];
             if ( ! empty( $pal[3] ) ) $text = $text ?: $pal[3];
+            if ( ! empty( $pal[4] ) ) $page = $page ?: $pal[4];
         }
         $primary = sanitize_hex_color( substr( (string) $primary, 0, 7 ) );
         if ( ! $primary ) return new WP_Error( 'none', 'Could not find your brand colors. Pick them by hand under Colors.' );
-        $cur = Marketur_App_Kit::get( 'colors' );
-        $cur['active'] = $primary;
-        $text = sanitize_hex_color( substr( (string) $text, 0, 7 ) );
-        if ( $text ) $cur['ink'] = $text;
-        self::save( [ 'colors' => $cur ] );
-        return 'Used your site\'s brand color ' . $primary . ' for the app.';
+        $mix = [ 'MAK_Home_App', 'mix' ];
+        $light = [ 'MAK_Home_App', 'light' ];
+        $ink = sanitize_hex_color( substr( (string) $text, 0, 7 ) );
+        if ( ! $ink || call_user_func( $light, $ink ) ) $ink = '#121212';
+        // A warm paper page with a hint of the brand, unless the site has its own soft page color.
+        $page = sanitize_hex_color( substr( (string) $page, 0, 7 ) );
+        $paper = ( $page && call_user_func( $light, $page ) && strtoupper( $page ) !== '#FFFFFF' ) ? $page : call_user_func( $mix, '#F6F3EE', $primary, .05 );
+        $bar = call_user_func( $mix, $ink, '#000000', .1 );
+        $cur = [
+            'top' => $paper, 'bar' => $bar, 'active' => $primary, 'inactive' => call_user_func( $mix, $paper, $bar, .32 ),
+            'paper' => $paper, 'ink' => $ink, 'muted' => call_user_func( $mix, $ink, $paper, .5 ),
+        ];
+        self::save( [ 'colors' => $cur, 'splash_color' => '' ] );
+        return 'Used your site\'s brand color ' . $primary . ' the NexURLs way: a soft page, a dark tab bar and a plain launch screen in the page color.';
     }
 
     public static function tabs() {
@@ -287,7 +300,8 @@ final class MAK_Autofill {
             . "\n\nUse only what the site says. Do not invent services, prices, places or claims. If something is not on the site, leave it empty. Plain words, no em dashes.\n"
             . "Reply with ONLY a JSON object, no other text:\n"
             . "{\"business\": \"3 to 5 sentences: what the business is, what it sells or does, how it makes money, and where it is if local\", \"audience\": \"who the customers are, one sentence\", \"offers\": [\"the main things it sells or offers, up to 8\"], \"tone\": \"how the site talks, a few words\", \"app_reasons\": \"one or two sentences: what people would open the app to do, most often first\", \"home_template\": \"dashboard (most sites), store (sells products online), feed (mostly articles or news) or services (a local business people call, book or visit)\", \"tabs\": [{\"label\": \"short, up to 12 characters\", \"path\": \"an address from the list\", \"icon\": \"an icon name\"}], \"shortcuts\": [{\"label\": \"...\", \"path\": \"...\", \"icon\": \"...\"}], \"phone\": \"\", \"email\": \"\", \"address\": \"\", \"hours\": \"\", \"booking_url\": \"\"}\n"
-            . "Tabs: 3 to 5, the first is Home with path /, the rest are what app users need most, and add an account tab when members can sign up. Shortcuts: 4 to 6 other useful pages that are not tabs.";
+            . "Tabs: 3 to 5, the first is Home with path /, the rest are what app users need most, and add an account tab when members can sign up. Shortcuts: 4 to 6 other useful pages that are not tabs."
+            . ' Put these keys in the same JSON object too: "main": {"sub": "a short line above the big button, under 30 characters", "label": "the one thing people most come to do, 2 to 5 words, like Shop the new drop or Book a session", "path": "an address from the list, or the booking link, or tel: and the phone number", "button": "one short word on the button, like Shop, Book, Read, Go"}, "lede": "one friendly sentence for visitors who are not signed in, under 140 characters", "join": {"title": "a short title inviting visitors to make an account, only if members can sign up", "text": "one sentence on what an account gives them"}.';
         $r = MAK_AI_Tools::hub( 'assistant', [ 'messages' => [ [ 'role' => 'user', 'content' => $ask ] ], 'tools' => [] ], 100 );
         if ( is_wp_error( $r ) ) return $r;
         $text = '';
@@ -313,11 +327,24 @@ final class MAK_Autofill {
             'address'   => $clean( $j['address'] ?? '' ),
             'hours'     => $clean( $j['hours'] ?? '' ),
             'book'      => esc_url_raw( $j['booking_url'] ?? '' ),
+            'main'      => self::clean_main( (array) ( $j['main'] ?? [] ), $known, $clean ),
+            'lede'      => mb_substr( $clean( $j['lede'] ?? '' ), 0, 160 ),
+            'join'      => [ 'title' => mb_substr( $clean( $j['join']['title'] ?? '' ), 0, 60 ), 'text' => mb_substr( $clean( $j['join']['text'] ?? '' ), 0, 200 ) ],
         ];
         update_option( 'mak_study', $sug, false );
         self::save( [ 'site_brief' => $brief ] );
         self::apply_study( false );
         return 'The AI studied ' . count( $pages ) . ' pages' . ( $products ? ', ' . count( $products ) . ' products' : '' ) . ( $posts ? ' and ' . count( $posts ) . ' posts' : '' ) . ' and wrote down what your business is about. Read it under What the AI knows, and fix anything it got wrong.';
+    }
+
+    private static function clean_main( array $m, array $known, $clean ) {
+        $p = trim( (string) ( $m['path'] ?? '' ) );
+        if ( preg_match( '#^tel:[0-9+ ()-]{6,}$#', $p ) ) $p = 'tel:' . preg_replace( '/[^0-9+]/', '', substr( $p, 4 ) );
+        elseif ( preg_match( '#^https?://#', $p ) ) $p = self::own( $p ) ? self::path( $p ) : esc_url_raw( $p );
+        if ( strpos( $p, '/' ) === 0 && ! isset( $known[ $p ] ) ) $p = '';
+        $label = mb_substr( $clean( $m['label'] ?? '' ), 0, 40 );
+        if ( $p === '' || $label === '' ) return [];
+        return [ 'sub' => mb_substr( $clean( $m['sub'] ?? '' ), 0, 40 ), 'label' => $label, 'url' => $p, 'button' => mb_substr( $clean( $m['button'] ?? '' ), 0, 12 ) ];
     }
 
     /**
@@ -330,7 +357,13 @@ final class MAK_Autofill {
         if ( ! $g ) return [];
         $s = Marketur_App_Kit::get();
         $ch = []; $done = [];
-        if ( $all && $g['template'] && $s['home_template'] === 'dashboard' && $g['template'] !== 'dashboard' ) { $ch['home_template'] = $g['template']; $done[] = 'Picked the ' . strtolower( strtok( MAK_Home::templates()[ $g['template'] ], ':' ) ) . ' home screen look for your kind of business.'; }
+        if ( $all && in_array( $s['home_template'], [ 'dashboard', '' ], true ) ) { $ch['home_template'] = 'app'; $done[] = 'Switched the home screen to the NexURLs look.'; }
+        if ( ! empty( $g['main'] ) && ( trim( (string) $s['main_label'] ) === '' || trim( (string) $s['main_url'] ) === '' ) ) {
+            $ch['main_label'] = $g['main']['label']; $ch['main_url'] = $g['main']['url']; $ch['main_sub'] = $g['main']['sub']; $ch['main_button'] = $g['main']['button'];
+            $done[] = 'Made the big button: ' . $g['main']['label'] . '.';
+        }
+        if ( ! empty( $g['lede'] ) && trim( (string) $s['home_lede'] ) === '' ) $ch['home_lede'] = $g['lede'];
+        if ( ! empty( $g['join']['title'] ) && trim( (string) $s['join_title'] ) === '' ) { $ch['join_title'] = $g['join']['title']; $ch['join_text'] = $g['join']['text']; }
         $tabs_default = trim( (string) $s['tabs'] ) === '' || trim( str_replace( "\r", '', (string) $s['tabs'] ) ) === self::DEFAULT_TABS;
         if ( $all && $tabs_default && count( $g['tabs'] ) >= 2 ) { $ch['tabs'] = implode( "\n", $g['tabs'] ); $done[] = 'Made ' . count( $g['tabs'] ) . ' tabs for what your app users need most.'; }
         if ( trim( (string) $s['home_tiles'] ) === '' && $g['shortcuts'] ) { $ch['home_tiles'] = implode( "\n", $g['shortcuts'] ); $done[] = 'Added ' . count( $g['shortcuts'] ) . ( count( $g['shortcuts'] ) === 1 ? ' shortcut' : ' shortcuts' ) . ' to the home screen.'; }
@@ -387,7 +420,8 @@ final class MAK_Autofill {
         // What the study found (the page runs Study first, then this).
         foreach ( self::apply_study( true ) as $d ) $done[] = $d;
         $s = Marketur_App_Kit::get();
-        if ( $s['colors']['active'] === Marketur_App_Kit::defaults()['colors']['active'] ) $add( self::colors() );
+        // Still the starting colors (this version's or an older one's): use the brand, laid out the NexURLs way.
+        if ( in_array( strtoupper( $s['colors']['active'] ), [ '#FF5A1F', '#2563EB' ], true ) ) $add( self::colors() );
         if ( trim( (string) $s['tabs'] ) === '' || trim( str_replace( "\r", '', (string) $s['tabs'] ) ) === self::DEFAULT_TABS ) $add( self::tabs() );
         $add( self::privacy() );
         $add( self::delete_page() );

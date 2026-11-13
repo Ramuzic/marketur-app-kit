@@ -39,6 +39,11 @@ if (errors.length) { console.error('customer.json problems:\n - ' + errors.join(
 const colors = Object.assign({ top: '#FFFFFF', bar: '#FFFFFF', active: '#2563EB', inactive: '#9CA3AF', paper: '#FFFFFF', ink: '#111111', muted: '#6B7280' }, c.colors || {});
 const short = c.short_name || c.name;
 const uaTag = (c.slug || 'kit').replace(/[^a-z0-9]/gi, '') + 'App';
+// The launch screen: plain in the home screen's background color, like NexURLs (the page then seems
+// to just appear), or with the icon in the middle. Set on the Your app page or by the AI.
+const sp = Object.assign({ style: 'plain', color: colors.paper }, c.splash || {});
+const splashBg = /^#[0-9a-f]{6}$/i.test(sp.color || '') ? sp.color : colors.paper;
+const splashDark = /^#[0-9a-f]{6}$/i.test(sp.dark || '') ? sp.dark : (c.splash_dark || splashBg);
 const dark = (hex) => { const v = parseInt(hex.replace('#', ''), 16); const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255; return (0.299 * r + 0.587 * g + 0.114 * b) < 140; };
 
 // ---- web settings (copied into both apps by cap sync) ------------------------------------------
@@ -49,12 +54,12 @@ write('capacitor.config.json', JSON.stringify({
   server: { url: start, cleartext: false, allowNavigation: [host, '*.' + host].concat(c.allow_navigation || []), errorPath: 'offline.html' },
   // Every app also says MarketurApp, so one site plugin can spot any Kit app.
   appendUserAgent: uaTag + '/' + version + ' MarketurApp/1.0',
-  backgroundColor: colors.paper,
+  backgroundColor: splashBg,
   ios: { contentInset: 'never', scrollEnabled: true },
   android: { allowMixedContent: false },
   plugins: {
     SystemBars: { insetsHandling: 'disable', style: dark(colors.top) ? 'DARK' : 'LIGHT' },
-    SplashScreen: { launchShowDuration: 1200, launchAutoHide: true, backgroundColor: colors.paper, showSpinner: false, androidScaleType: 'CENTER_CROP' }
+    SplashScreen: { launchShowDuration: 1200, launchAutoHide: true, backgroundColor: splashBg, showSpinner: false, androidScaleType: 'CENTER_CROP' }
   }
 }, null, 2) + '\n');
 
@@ -225,7 +230,7 @@ const bg = c.icon_background || colors.paper;
 pj.name = 'app-' + (c.slug || 'kit');
 pj.version = version;
 pj.description = short + ' app (Marketur App Kit)';
-pj.scripts.icons = `npx capacitor-assets generate --iconBackgroundColor '${bg}' --iconBackgroundColorDark '${bg}' --splashBackgroundColor '${colors.paper}' --splashBackgroundColorDark '${colors.paper}'`;
+pj.scripts.icons = `npx capacitor-assets generate --iconBackgroundColor '${bg}' --iconBackgroundColorDark '${bg}' --splashBackgroundColor '${splashBg}' --splashBackgroundColorDark '${splashDark}'`;
 write('package.json', JSON.stringify(pj, null, 2) + '\n');
 const icon = path.join(dir, 'icon.png');
 if (fs.existsSync(icon)) {
@@ -246,8 +251,9 @@ if (fs.existsSync(icon)) {
     await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: inner, gravity: 'center' }]).png().toFile(P('resources', 'icon-foreground.png'));
     await sharp({ create: { width: 1024, height: 1024, channels: 4, background: corner } }).png().toFile(P('resources', 'icon-background.png'));
     const mark = await sharp(buf).resize(560, 560).composite([{ input: Buffer.from('<svg width="560" height="560"><rect width="560" height="560" rx="124" ry="124"/></svg>'), blend: 'dest-in' }]).png().toBuffer();
-    for (const [n, bgc] of [['splash.png', colors.paper], ['splash-dark.png', c.splash_dark || colors.paper]]) {
-      await sharp({ create: { width: 2732, height: 2732, channels: 4, background: bgc } }).composite([{ input: mark, gravity: 'center' }]).png().toFile(P('resources', n));
+    for (const [n, bgc] of [['splash.png', splashBg], ['splash-dark.png', splashDark]]) {
+      const base = sharp({ create: { width: 2732, height: 2732, channels: 4, background: bgc } });
+      await (sp.style === 'logo' ? base.composite([{ input: mark, gravity: 'center' }]) : base).png().toFile(P('resources', n));
     }
     console.log('made the adaptive icon layers and launch screens (background ' + corner + ')');
   }

@@ -1,12 +1,14 @@
 <?php
 /**
- * App home screens (App Kit 1.5.0).
+ * App home screens (App Kit 1.5.0; the NexURLs look 1.8.0).
  *
  * The page the app opens on. Apple turns down apps that are just a website in a frame
  * (guideline 4.2), and a real home screen is one of the biggest reasons the NexURLs app got
  * through, so every Kit app gets one. Four looks, all built from the site's own content, so
  * they work on any site with or without a page builder:
  *
+ *   app        the NexURLs look (includes/home-app.php): dark hero, big main button, colored
+ *              shortcuts members can rearrange, swipe rows, topics, community. The default.
  *   dashboard  greeting, shortcut tiles, latest posts
  *   store      product categories and products (WooCommerce), falls back to posts
  *   feed       posts as big cards
@@ -30,6 +32,7 @@ final class MAK_Home {
 
     public static function templates() {
         return [
+            'app'       => 'The NexURLs look: greeting, a big main button, colored shortcuts, products, posts and topics (the default)',
             'dashboard' => 'Dashboard: greeting, shortcut tiles and the latest posts',
             'store'     => 'Store: product categories and products (needs WooCommerce, otherwise shows posts)',
             'feed'      => 'Feed: your posts as big cards',
@@ -52,29 +55,7 @@ final class MAK_Home {
     }
 
     private static function icon( $name ) {
-        $p = [
-            'home' => 'M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',
-            'shop' => 'M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2z',
-            'cart' => 'M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
-            'account' => 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
-            'search' => 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
-            'news' => 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
-            'chat' => 'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z',
-            'community' => 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
-            'bell' => 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
-            'heart' => 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
-            'star' => 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
-            'map' => 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z',
-            'phone' => 'M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z',
-            'calendar' => 'M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z',
-            'play' => 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z',
-            'grid' => 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z',
-            'info' => 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z',
-            'menu' => 'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',
-            'mail' => 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
-            'clock' => 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z',
-        ];
-        return '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="' . ( $p[ $name ] ?? $p['star'] ) . '"/></svg>';
+        return class_exists( 'MAK_Admin_UI' ) ? MAK_Admin_UI::svg( $name, 24 ) : '';
     }
 
     private static function tiles() {
@@ -131,8 +112,9 @@ final class MAK_Home {
 
     public static function render( $atts = [] ) {
         $s = Marketur_App_Kit::get();
-        $tpl = sanitize_key( $atts['template'] ?? '' ) ?: ( $s['home_template'] ?? 'dashboard' );
-        if ( ! isset( self::templates()[ $tpl ] ) ) $tpl = 'dashboard';
+        $tpl = sanitize_key( $atts['template'] ?? '' ) ?: ( $s['home_template'] ?? 'app' );
+        if ( ! isset( self::templates()[ $tpl ] ) ) $tpl = 'app';
+        if ( $tpl === 'app' && class_exists( 'MAK_Home_App' ) ) return MAK_Home_App::render();
         $c = $s['colors'];
         $u = wp_get_current_user();
         $hello = is_user_logged_in() && $u->first_name ? 'Hi, ' . $u->first_name : ( $s['home_headline'] ?: 'Welcome to ' . get_bloginfo( 'name' ) );

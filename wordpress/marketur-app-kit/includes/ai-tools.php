@@ -23,7 +23,7 @@ final class MAK_AI_Tools {
     }
 
     private static function icons() {
-        return [ 'home', 'shop', 'cart', 'account', 'search', 'news', 'chat', 'community', 'bell', 'heart', 'star', 'map', 'phone', 'calendar', 'play', 'grid', 'info', 'menu' ];
+        return class_exists( 'MAK_Admin_UI' ) ? array_keys( MAK_Admin_UI::icons() ) : [ 'home', 'shop', 'cart', 'account', 'search', 'news', 'chat', 'community', 'bell', 'heart', 'star', 'map', 'phone', 'calendar', 'play', 'grid', 'info', 'menu' ];
     }
 
     public static function tools( $tools ) {
@@ -213,8 +213,9 @@ final class MAK_AI_Tools {
         return [
             'name'        => $s['app_name'],
             'start'       => $s['start'],
-            'nav'         => $s['nav'],
+            'nav'         => $s['look'] === 'pwa' ? 'none' : $s['nav'],
             'colors'      => $s['colors'],
+            'splash'      => [ 'style' => $s['splash'], 'color' => Marketur_App_Kit::splash_color(), 'dark' => Marketur_App_Kit::splash_color() ],
             'tabs'        => Marketur_App_Kit::tabs_list(),
             'onboarding'  => Marketur_App_Kit::onboarding_list(),
             'subtitle'    => $s['subtitle'],

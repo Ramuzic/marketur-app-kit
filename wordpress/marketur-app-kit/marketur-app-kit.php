@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.7.0' );
+define( 'MAK_VERSION', '1.8.0' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -63,14 +63,15 @@ final class Marketur_App_Kit {
             'android_sha256' => '',
             'delete_page'    => 0,
             'delete_mode'    => 'now',
-            'colors'         => [ 'top' => '#FFFFFF', 'bar' => '#FFFFFF', 'active' => '#2563EB', 'inactive' => '#9CA3AF', 'paper' => '#FFFFFF', 'ink' => '#111111', 'muted' => '#6B7280' ],
+            // The NexURLs palette is the starting point; Use my site's colors swaps in the brand.
+            'colors'         => [ 'top' => '#F4F0E8', 'bar' => '#121212', 'active' => '#FF5A1F', 'inactive' => '#B9B2A6', 'paper' => '#F4F0E8', 'ink' => '#121212', 'muted' => '#6B665E' ],
             'tabs'           => "Home|/|home\nAccount|/my-account/|account",
             'nav'            => 'floating',
             'onboarding'     => '',
             'live'           => 0,
             'updated'        => 0,
             'hub_key'        => '',
-            'home_template'  => 'dashboard',
+            'home_template'  => 'app',
             'home_page'      => 0,
             'home_headline'  => '',
             'home_tiles'     => '',
@@ -84,6 +85,17 @@ final class Marketur_App_Kit {
             'keywords'       => '',
             'support_email'  => get_option( 'admin_email' ),
             'site_brief'     => '',
+            'look'           => 'app',
+            'feel'           => 1,
+            'splash'         => 'plain',
+            'splash_color'   => '',
+            'main_label'     => '',
+            'main_sub'       => '',
+            'main_url'       => '',
+            'main_button'    => '',
+            'home_lede'      => '',
+            'join_title'     => '',
+            'join_text'      => '',
         ];
     }
 
@@ -141,6 +153,32 @@ final class Marketur_App_Kit {
         ];
     }
 
+    public static function looks() {
+        return [
+            'app' => [ 'The NexURLs look', 'Native tabs along the bottom, the NexURLs style home screen in your colors, the in-app browser, loading bar and buzzes. Best for getting through the App Store review.' ],
+            'pwa' => [ 'My PWA look', 'Your site exactly as PWA PowerUp shows it when installed: its bottom bar, launch animation and app styles. The native tabs are switched off.' ],
+        ];
+    }
+
+    /** True when the PWA look can be used: PWA PowerUp is installed and its bottom bar is on. */
+    public static function has_pwa() {
+        if ( ! class_exists( 'Marketur_PWA' ) ) return false;
+        $o = (array) get_option( 'mpwa_nav', [] );
+        return ( $o['enabled'] ?? '' ) === '1';
+    }
+
+    /** The launch screen color: the home screen's background, so opening the app feels seamless (the NexURLs way). */
+    public static function splash_color() {
+        $s = self::get();
+        if ( sanitize_hex_color( $s['splash_color'] ) ) return $s['splash_color'];
+        if ( $s['look'] === 'pwa' && class_exists( 'Marketur_PWA' ) ) {
+            $o = (array) get_option( 'mpwa_splash', [] );
+            $c = ( $o['boot_mode'] ?? '0' ) === '1' ? ( $o['boot_bg1'] ?? '' ) : ( $o['bg_color'] ?? '' );
+            if ( sanitize_hex_color( $c ) ) return $c;
+        }
+        return $s['colors']['paper'];
+    }
+
     public static function tabs_list() {
         $tabs = [];
         foreach ( array_filter( array_map( 'trim', explode( "\n", (string) self::get( 'tabs' ) ) ) ) as $line ) {
@@ -173,7 +211,8 @@ final class Marketur_App_Kit {
         $s = self::get();
         $host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
         if ( 0 === strpos( $host, 'www.' ) ) $host = substr( $host, 4 );
-        $c = [ 'host' => $host, 'updated' => (int) $s['updated'], 'nav' => isset( self::navs()[ $s['nav'] ] ) ? $s['nav'] : 'floating', 'colors' => $s['colors'] ];
+        $nav = $s['look'] === 'pwa' ? 'none' : ( isset( self::navs()[ $s['nav'] ] ) ? $s['nav'] : 'floating' );
+        $c = [ 'host' => $host, 'updated' => (int) $s['updated'], 'nav' => $nav, 'colors' => $s['colors'] ];
         if ( $s['start'] ) $c['start'] = $s['start'];
         $tabs = self::tabs_list();
         if ( $tabs ) $c['tabs'] = $tabs;
@@ -201,7 +240,10 @@ final class Marketur_App_Kit {
      */
     public static function update_app( array $in ) {
         $s = self::get();
-        foreach ( [ 'app_name', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_text_field( $in[ $k ] );
+        foreach ( [ 'app_name', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address', 'main_label', 'main_sub', 'main_url', 'main_button', 'home_lede', 'join_title', 'join_text' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_text_field( $in[ $k ] );
+        if ( isset( $in['look'] ) && isset( self::looks()[ $in['look'] ] ) ) $s['look'] = $in['look'];
+        if ( isset( $in['splash'] ) && in_array( $in['splash'], [ 'plain', 'logo' ], true ) ) $s['splash'] = $in['splash'];
+        if ( isset( $in['splash_color'] ) ) $s['splash_color'] = (string) sanitize_hex_color( $in['splash_color'] );
         if ( isset( $in['home_book'] ) ) $s['home_book'] = esc_url_raw( $in['home_book'] );
         if ( isset( $in['home_email'] ) ) $s['home_email'] = sanitize_email( $in['home_email'] );
         if ( isset( $in['home_template'] ) && class_exists( 'MAK_Home' ) && isset( MAK_Home::templates()[ $in['home_template'] ] ) ) $s['home_template'] = $in['home_template'];
@@ -228,6 +270,8 @@ final class Marketur_App_Kit {
     public function head() {
         if ( ! self::in_app() ) return;
         $hide = array_filter( array_map( 'trim', explode( "\n", (string) self::get( 'hide' ) ) ) );
+        // The PWA look shows the site the way the installed PWA does, header and all; only install prompts are hidden.
+        if ( self::get( 'look' ) === 'pwa' ) $hide = array_filter( $hide, function ( $x ) { return stripos( $x, 'install' ) !== false; } );
         $sel  = implode( ',', array_map( function ( $x ) { return 'html.mak-app ' . $x; }, $hide ) );
         echo "<script>document.documentElement.classList.add('mak-app');</script>\n";
         echo '<style id="mak-app-css">';
@@ -369,7 +413,8 @@ final class Marketur_App_Kit {
             'slug' => $slug, 'name' => $name, 'short_name' => mb_substr( $name, 0, 12 ),
             'bundle_id' => $s['bundle_id'], 'android_package' => $s['android_package'] ?: $s['bundle_id'],
             'site' => home_url( '/' ), 'start' => $s['start'] ?: home_url( '/' ), 'version' => '1.0.0',
-            'onesignal_app_id' => '', 'nav' => $s['nav'], 'colors' => $s['colors'], 'tabs' => array_slice( $tabs, 0, 5 ),
+            'onesignal_app_id' => '', 'nav' => $s['look'] === 'pwa' ? 'none' : $s['nav'], 'colors' => $s['colors'], 'tabs' => array_slice( $tabs, 0, 5 ),
+            'splash' => [ 'style' => $s['splash'], 'color' => self::splash_color(), 'dark' => self::splash_color() ],
             'onboarding' => [
                 [ 'icon' => 'home', 'title' => 'Welcome to ' . $name, 'text' => get_bloginfo( 'description' ) ?: 'Everything from ' . $name . ', in one place.' ],
                 [ 'icon' => 'bell', 'title' => 'Stay in the loop', 'text' => 'Turn on notifications for news and replies. You can change this any time.', 'push' => true ],
@@ -420,7 +465,11 @@ final class Marketur_App_Kit {
             }
             wp_safe_redirect( admin_url( 'admin.php?page=marketur-app-kit&saved=1' ) ); exit;
         }
-        foreach ( [ 'app_name', 'ua_tag', 'bundle_id', 'android_package', 'apple_team_id', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address' ] as $k ) $s[ $k ] = sanitize_text_field( $in[ $k ] ?? '' );
+        foreach ( [ 'app_name', 'ua_tag', 'bundle_id', 'android_package', 'apple_team_id', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address', 'main_label', 'main_sub', 'main_url', 'main_button', 'home_lede', 'join_title', 'join_text' ] as $k ) $s[ $k ] = sanitize_text_field( $in[ $k ] ?? '' );
+        $s['look'] = isset( self::looks()[ $in['look'] ?? '' ] ) ? $in['look'] : 'app';
+        $s['feel'] = empty( $in['feel'] ) ? 0 : 1;
+        $s['splash'] = ( $in['splash'] ?? '' ) === 'logo' ? 'logo' : 'plain';
+        $s['splash_color'] = (string) sanitize_hex_color( $in['splash_color'] ?? '' );
         $s['home_book'] = esc_url_raw( $in['home_book'] ?? '' );
         $s['home_email'] = sanitize_email( $in['home_email'] ?? '' );
         $s['home_tiles'] = sanitize_textarea_field( $in['home_tiles'] ?? '' );
@@ -534,13 +583,27 @@ final class Marketur_App_Kit {
     <div class="mak-card">
       <h2>How the app looks</h2>
       <?php echo $help( 'This is what people see when they open your app. The name shows under the icon on their phone. The home screen is the first page of the app. Tabs are the buttons along the bottom. With live settings on, the app picks these up from your site every time it opens, so you can change them later without a new version.' ); ?>
+      <div class="mak-looks"><?php foreach ( self::looks() as $k => $v ) {
+          $off = $k === 'pwa' && ! self::has_pwa();
+          echo '<label class="mak-look' . ( $off ? ' off' : '' ) . '"><input type="radio" name="mak[look]" value="' . esc_attr( $k ) . '"' . checked( $s['look'], $k, false ) . disabled( $off && $s['look'] !== 'pwa', true, false ) . '><strong>' . esc_html( $v[0] ) . '</strong><span>' . esc_html( $v[1] ) . '</span>' . ( $off ? '<em>Needs PWA PowerUp with its bottom bar switched on.</em>' : '' ) . '</label>';
+      } ?></div>
       <table class="form-table">
         <?php $f( 'app_name', 'App name', 'Up to 30 characters. Under the icon on a phone it shows about 12.' ); ?>
         <tr><th>Home screen</th><td>
-          <div class="mak-tpls"><?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) { $p = explode( ':', $v, 2 ); echo '<label class="mak-tpl"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '><span class="mak-tpl-i">' . MAK_Admin_UI::svg( [ 'dashboard' => 'grid', 'store' => 'shop', 'feed' => 'news', 'services' => 'phone' ][ $k ] ?? 'star', 22 ) . '</span><strong>' . esc_html( $p[0] ) . '</strong><span>' . esc_html( trim( $p[1] ?? '' ) ) . '</span></label>'; } ?></div>
+          <div class="mak-tpls"><?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) { $p = explode( ':', $v, 2 ); echo '<label class="mak-tpl"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '><span class="mak-tpl-i">' . MAK_Admin_UI::svg( [ 'app' => 'sparkles', 'dashboard' => 'grid', 'store' => 'shop', 'feed' => 'news', 'services' => 'phone' ][ $k ] ?? 'star', 22 ) . '</span><strong>' . esc_html( $p[0] ) . '</strong><span>' . esc_html( trim( $p[1] ?? '' ) ) . '</span></label>'; } ?></div>
           <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) echo '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See the home screen</a></p>'; else echo '<p>' . $ai( 'home', 'Make the home screen' ) . $msg( 'home' ) . '</p>'; ?>
-          <p class="description">Required: Apple turns down apps that are just the website. Built from your own posts, products and links.</p>
+          <p class="description">Required: Apple turns down apps that are just the website. Built from your own posts, products and links. The NexURLs look is the one the NexURLs app opens on.</p>
         </td></tr>
+        <tr><th>The big button</th><td>
+          <div class="mak-main-btn">
+            <input type="text" name="mak[main_sub]" value="<?php echo esc_attr( $s['main_sub'] ); ?>" placeholder="Small line on top, e.g. New this week">
+            <input type="text" name="mak[main_label]" value="<?php echo esc_attr( $s['main_label'] ); ?>" placeholder="What it says, e.g. Shop the new drop">
+            <input type="text" name="mak[main_url]" value="<?php echo esc_attr( $s['main_url'] ); ?>" placeholder="/shop/ or a full link" list="mak-paths">
+            <input type="text" name="mak[main_button]" value="<?php echo esc_attr( $s['main_button'] ); ?>" placeholder="Button word, e.g. Shop">
+          </div>
+          <p class="description">The one thing your app is for, right under the greeting (NexURLs has Next here). Leave it empty and it is worked out from your site; Set up my app has the AI pick it.</p>
+        </td></tr>
+        <?php $f( 'home_lede', 'Line for visitors', 'One sentence under the greeting for people who are not signed in.' ); ?>
         <?php $f( 'home_headline', 'Home screen greeting', 'Visitors see this. Members see Hi and their first name.' ); ?>
         <tr><th>Home screen shortcuts</th><td><?php echo $rows( 'home_tiles', 8, 'shortcut', 'One per line: <code>Label|/page-address/|icon</code>. Empty uses the tabs.' ); ?><p class="description">Big buttons on the home screen. Leave empty to show your tabs there.</p></td></tr>
         <tr><th>Bottom tabs</th><td>
@@ -549,6 +612,11 @@ final class Marketur_App_Kit {
         </td></tr>
         <tr><th><label for="mak_nav">Tab bar style</label></th><td>
           <select id="mak_nav" name="mak[nav]"><?php foreach ( self::navs() as $k => $v ) echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['nav'], $k, false ) . '>' . esc_html( $v ) . '</option>'; ?></select>
+        </td></tr>
+        <tr><th>Launch screen</th><td>
+          <label style="margin-right:16px"><input type="radio" name="mak[splash]" value="plain" <?php checked( $s['splash'], 'plain' ); ?>> Plain, like NexURLs (recommended)</label>
+          <label><input type="radio" name="mak[splash]" value="logo" <?php checked( $s['splash'], 'logo' ); ?>> With your icon in the middle</label>
+          <p class="mak-splash"><label class="mak-col"><input type="color" name="mak[splash_color]" value="<?php echo esc_attr( self::splash_color() ); ?>"><span>Color</span></label> <span class="description">What shows for a second while the app starts. NexURLs uses its page color, so the home screen seems to just appear. Set for you when the AI picks your colors. Changes here need a new build.</span></p>
         </td></tr>
         <tr><th>Colors</th><td>
           <div class="mak-cols"><?php $names = [ 'top' => 'Top bar', 'bar' => 'Tab bar', 'active' => 'Selected tab', 'inactive' => 'Other tabs', 'paper' => 'Background', 'ink' => 'Text', 'muted' => 'Soft text' ];
@@ -574,6 +642,11 @@ final class Marketur_App_Kit {
       <summary><h2>Advanced</h2><span class="mak-sub">local business details, what is hidden in the app, app ids, your key</span></summary>
       <table class="form-table">
         <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made.' ); ?>
+        <tr><th>App feel</th><td>
+          <label><input type="checkbox" name="mak[feel]" value="1" <?php checked( (int) $s['feel'], 1 ); ?>> The NexURLs feel inside the app: other websites open in an in-app browser, a loading bar between pages, buzzes when something posts, a rating prompt for happy users</label>
+        </td></tr>
+        <?php $f( 'join_title', 'Join card title', 'Shown to visitors at the bottom of the home screen. Empty uses Join and your site name.' ); ?>
+        <?php $f( 'join_text', 'Join card text' ); ?>
         <tr><th>Live settings</th><td>
           <label><input type="checkbox" name="mak[live]" value="1" <?php checked( (int) $s['live'], 1 ); ?>> The app reads its tabs, colors, tab bar style and start page from here each time it opens</label>
           <p class="description">Turned on for you by Set up my app. With it off, the app keeps what it was built with.</p>
@@ -608,7 +681,7 @@ final class Marketur_App_Kit {
   </div>
 
   <aside class="mak-side">
-    <div class="mak-phone" data-nav="<?php echo esc_attr( $s['nav'] ); ?>">
+    <div class="mak-phone" data-nav="<?php echo esc_attr( $s['look'] === 'pwa' ? 'none' : $s['nav'] ); ?>">
       <div class="mak-ptop"><span class="mak-pname"></span></div>
       <div class="mak-pscreen"><iframe src="<?php echo esc_url( add_query_arg( 'mak_preview', '1', $start ) ); ?>" title="App preview" loading="lazy"></iframe></div>
       <div class="mak-pbar"></div>
@@ -660,6 +733,12 @@ final class Marketur_App_Kit {
 .mak-set .mak-tpl-i{color:#667085}.mak-set .mak-tpl:has(input:checked){border-color:#2563eb;background:#f5f8ff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .mak-set .mak-tpl:has(input:checked) .mak-tpl-i{color:#2563eb}
 .mak-set .mak-cols{display:flex;flex-wrap:wrap;gap:10px}
+.mak-set .mak-looks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:6px 0 4px}
+.mak-set .mak-look{position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1.5px solid #e4e7ec;border-radius:14px;cursor:pointer;background:#fff}
+.mak-set .mak-look input{position:absolute;opacity:0}.mak-set .mak-look span{font-size:13px;color:#475467;line-height:1.45}.mak-set .mak-look em{font-size:12px;color:#b54708;font-style:normal}
+.mak-set .mak-look:has(input:checked){border-color:#2563eb;background:#f5f8ff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}.mak-set .mak-look.off{opacity:.6;cursor:default}
+.mak-set .mak-main-btn{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:640px}.mak-set .mak-main-btn input{width:100%;box-sizing:border-box}
+.mak-set .mak-splash{display:flex;align-items:center;gap:12px;margin:8px 0 0}
 .mak-set .mak-col{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:#475467;width:76px;text-align:center}
 .mak-set .mak-col input{width:52px;height:36px;padding:2px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;cursor:pointer}
 .mak-set .mak-row{display:grid;grid-template-columns:44px minmax(100px,170px) minmax(0,1fr) auto 32px;gap:8px;align-items:center;margin:0 0 8px;padding:6px;border:1px solid #eaecf0;border-radius:12px;background:#fcfcfd}
@@ -672,8 +751,9 @@ final class Marketur_App_Kit {
 .mak-set .mak-card textarea.large-text,.mak-set .mak-card input.regular-text{width:100%;max-width:640px;box-sizing:border-box}.mak-set .mak-card textarea.large-text{max-width:none}
 .mak-set .mak-save{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding:14px 0;background:linear-gradient(transparent,#f5f6fa 35%)}
 .mak-pick{position:absolute;z-index:100000;width:430px;background:#fff;border:1px solid #e4e7ec;border-radius:14px;box-shadow:0 16px 40px rgba(16,24,40,.2);padding:12px}
-.mak-pick-h{font-weight:700;font-size:13px;margin:0 0 8px;color:#101828}
-.mak-pick-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.mak-pick-h{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;font-size:13px;margin:0 0 8px;color:#101828}
+.mak-pick-q{width:170px;min-height:32px;padding:4px 10px;border:1px solid #d0d5dd;border-radius:8px;font-size:13px}
+.mak-pick-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-height:330px;overflow-y:auto}
 .mak-pick-g button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:1px solid transparent;border-radius:10px;background:transparent;color:#344054;cursor:pointer;font-size:10.5px}
 .mak-pick-g button:hover{background:#f5f8ff;border-color:#bfd2fb;color:#2563eb}
 .mak-set .mak-side{position:sticky;top:46px}
@@ -727,5 +807,7 @@ require_once __DIR__ . '/includes/ai-tools.php';
 require_once __DIR__ . '/includes/assistant.php';
 require_once __DIR__ . '/includes/launch.php';
 require_once __DIR__ . '/includes/home.php';
+require_once __DIR__ . '/includes/home-app.php';
+require_once __DIR__ . '/includes/app-feel.php';
 require_once __DIR__ . '/includes/starter.php';
 require_once __DIR__ . '/includes/autofill.php';
