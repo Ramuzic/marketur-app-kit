@@ -22,7 +22,7 @@ final class MAK_Launch {
     }
 
     public static function menu() {
-        add_submenu_page( 'mak-assistant', 'Launch your app', 'Launch', 'manage_options', 'mak-launch', [ __CLASS__, 'page' ] );
+        add_submenu_page( 'marketur-app-kit', 'Launch your app', 'Launch', 'manage_options', 'mak-launch', [ __CLASS__, 'page' ] );
     }
 
     private static function flags() { return (array) get_option( self::FLAGS, [] ); }
@@ -126,13 +126,13 @@ final class MAK_Launch {
 
   <h2>iPhone</h2>
   <?php
-  $step( 'connect', 'Connect this site to Marketur', $connected, '<p>Paste the App Kit key from your Marketur order under <a href="' . esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ) . '">Settings &gt; App Kit</a> and save.</p>' );
+  $step( 'connect', 'Connect this site to Marketur', $connected, '<p>Paste the App Kit key from your Marketur order under <a href="' . esc_url( admin_url( 'admin.php?page=marketur-app-kit' ) ) . '">App Kit &gt; Your app</a> and save.</p>' );
   $list = '';
   foreach ( $checks as $c ) if ( ! $c['ok'] ) $list .= '<li>' . esc_html( $c['label'] ) . '<br><span class="description">' . esc_html( $c['fix'] ) . '</span></li>';
   $step( 'ready', 'Get the site ready for review', $ready, $ready ? '<p>All the checks pass.</p>' : '<p>Apple and Google reject apps for these, so fix them first:</p><ul class="mk-ul">' . $list . '</ul>' );
   $hp = (int) Marketur_App_Kit::get( 'home_page' );
   $has_home = $hp && get_post_status( $hp ) === 'publish';
-  $step( 'home', 'Give the app its own home screen', $has_home, '<p>Required. Apple turns down apps that are just the website, so your app opens on a home screen built from your own posts, products and links. Pick the look under <a href="' . esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ) . '">Settings &gt; App Kit</a> (or ask the Assistant), then:</p>' . ( $has_home ? '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See it</a></p>' : $btn( 'home', 'Make the home screen' ) ) );
+  $step( 'home', 'Give the app its own home screen', $has_home, '<p>Required. Apple turns down apps that are just the website, so your app opens on a home screen built from your own posts, products and links. Pick the look under <a href="' . esc_url( admin_url( 'admin.php?page=marketur-app-kit' ) ) . '">App Kit &gt; Your app</a> (or ask the Assistant), then:</p>' . ( $has_home ? '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See it</a></p>' : $btn( 'home', 'Make the home screen' ) ) );
   $step( 'apple_account', 'Apple Developer account', false, '<p>You need your own account; it costs $99 a year. Go to <a href="https://developer.apple.com/programs/enroll/" target="_blank" rel="noopener">developer.apple.com/programs/enroll</a> and enroll. For a business, enroll as an <strong>organization</strong> (it needs a free D-U-N-S number and can take a few days); otherwise as an individual. Tick Done once Apple says you are in.</p>', true );
   $step( 'apple_key', 'Give Marketur access to build your app', ! empty( $keys['apple'] ),
       '<ol class="mk-ol"><li>Open <a href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noopener">App Store Connect &gt; Users and Access &gt; Integrations &gt; App Store Connect API</a>. If it asks, click <strong>Request Access</strong> and accept.</li>'

@@ -193,7 +193,7 @@ final class MAK_AI_Tools {
 
     public static function hub( $path, $body = null ) {
         $key = (string) Marketur_App_Kit::get( 'hub_key' );
-        if ( $key === '' ) return new WP_Error( 'no_key', 'This site is not connected to Marketur yet. Paste the App Kit key from your Marketur account under Settings > App Kit.' );
+        if ( $key === '' ) return new WP_Error( 'no_key', 'This site is not connected to Marketur yet. Paste the App Kit key from your Marketur account under App Kit > Your app.' );
         $url = trailingslashit( (string) apply_filters( 'mak_hub_url', 'https://marketur.net' ) ) . 'wp-json/mak-hub/v1/' . $path;
         $args = [ 'timeout' => 25, 'headers' => [ 'X-MAK-Key' => $key, 'X-MAK-Site' => home_url( '/' ), 'Content-Type' => 'application/json' ] ];
         if ( $body !== null ) { $args['body'] = wp_json_encode( $body ); $r = wp_remote_post( $url, $args ); }

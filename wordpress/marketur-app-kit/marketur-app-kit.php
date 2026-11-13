@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.5.0' );
+define( 'MAK_VERSION', '1.6.0' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -38,10 +38,10 @@ final class Marketur_App_Kit {
             if ( ! current_user_can( 'manage_options' ) ) wp_die( 'No' );
             check_admin_referer( 'mak_make_home' );
             if ( class_exists( 'MAK_Home' ) ) MAK_Home::ensure_page();
-            wp_safe_redirect( admin_url( 'options-general.php?page=marketur-app-kit&made_home=1' ) ); exit;
+            wp_safe_redirect( admin_url( 'admin.php?page=marketur-app-kit&made_home=1' ) ); exit;
         } );
         add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $l ) {
-            array_unshift( $l, '<a href="' . esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ) . '">Settings</a>' );
+            array_unshift( $l, '<a href="' . esc_url( admin_url( 'admin.php?page=marketur-app-kit' ) ) . '">Settings</a>' );
             return $l;
         } );
     }
@@ -304,7 +304,7 @@ final class Marketur_App_Kit {
         check_admin_referer( 'mak_make_delete_page' );
         $id = wp_insert_post( [ 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Delete Your Account', 'post_name' => 'delete-account', 'post_content' => '[mak_delete_account]' ] );
         if ( $id && ! is_wp_error( $id ) ) { $s = (array) get_option( MAK_OPT, [] ); $s['delete_page'] = $id; update_option( MAK_OPT, $s ); }
-        wp_safe_redirect( admin_url( 'options-general.php?page=marketur-app-kit&made=1' ) ); exit;
+        wp_safe_redirect( admin_url( 'admin.php?page=marketur-app-kit&made=1' ) ); exit;
     }
 
     /* ---------------------------------------------------------------- readiness */
@@ -312,13 +312,13 @@ final class Marketur_App_Kit {
     public static function checks() {
         $s = self::get();
         $out = [];
-        $add = function ( $ok, $label, $fix = '' ) use ( &$out ) { $out[] = [ 'ok' => $ok, 'label' => $label, 'fix' => $fix ]; };
+        $add = function ( $ok, $label, $fix = '', $op = '', $later = false ) use ( &$out ) { $out[] = [ 'ok' => $ok, 'label' => $label, 'fix' => $fix, 'op' => $op, 'later' => $later ]; };
         $add( is_ssl() || strpos( home_url(), 'https://' ) === 0, 'The site uses https', 'Apps only load https sites. Turn on SSL with your host.' );
         $pp = (int) get_option( 'wp_page_for_privacy_policy' );
-        $add( $pp && get_post_status( $pp ) === 'publish', 'A privacy policy page is published and set', 'Settings > Privacy: pick or make the privacy policy page and publish it. Both stores ask for its link.' );
+        $add( $pp && get_post_status( $pp ) === 'publish', 'A privacy policy page is published and set', 'Both stores ask for a link to it.', 'privacy' );
         $reg = get_option( 'users_can_register' ) || class_exists( 'WooCommerce' ) || class_exists( 'Ihc_Db' ) || function_exists( 'ihc_is_magic_feat_active' );
         $dp  = (int) $s['delete_page'];
-        $add( ! $reg || ( $dp && get_post_status( $dp ) === 'publish' ), $reg ? 'People can make accounts, so there is a delete account page' : 'No public sign-up found (a delete account page is still a good idea)', 'Use the Make the delete account page button below. Apple rejects apps with sign-up but no way to delete the account.' );
+        $add( ! $reg || ( $dp && get_post_status( $dp ) === 'publish' ), $reg ? 'People can make accounts, so there is a delete account page' : 'No public sign-up found (a delete account page is still a good idea)', 'Apple rejects apps where people can sign up but cannot delete their account.', 'delete' );
         $icon = (int) get_option( 'site_icon' );
         $meta = $icon ? wp_get_attachment_metadata( $icon ) : [];
         $add( $icon && ! empty( $meta['width'] ) && $meta['width'] >= 512, 'The site icon is at least 512 x 512', 'Appearance > Customize > Site Identity: a square icon, 1024 x 1024 is best. It becomes the app icon.' );
@@ -327,12 +327,12 @@ final class Marketur_App_Kit {
             if ( mak_is_plugin_active( $f ) ) $social[] = $n;
         }
         $add( ! $social, $social ? 'Social sign-in found (' . implode( ', ', $social ) . '): the app needs Sign in with Apple too' : 'No Google or Facebook sign-in found', 'Apple guideline 4.8: offer Sign in with Apple next to other social sign-ins, or hide them inside the app.' );
-        $add( (bool) $s['bundle_id'], 'App bundle id is filled in', 'Fill in the bundle id below (from your App Kit order).' );
-        $add( $s['apple_team_id'] && $s['bundle_id'], 'iPhone links open in the app (Apple Team ID set)', 'Add the Apple Team ID (developer.apple.com > Membership).' );
-        $add( (bool) trim( (string) $s['android_sha256'] ), 'Android links open in the app (SHA-256 set)', 'Play Console > Test and release > App integrity > App signing key SHA-256, paste it below.' );
-        $add( strlen( wp_strip_all_tags( (string) $s['description'] ) ) >= 200, 'Store description written (200+ characters)', 'Write what people can do in the app. It goes on both store pages.' );
+        $add( (bool) $s['bundle_id'], 'The app has its id (from your order)', 'It comes with your Marketur order.', $s['hub_key'] ? 'order' : '' );
+        $add( strlen( wp_strip_all_tags( (string) $s['description'] ) ) >= 200, 'The store description is written', 'It goes on both store pages.', $s['hub_key'] ? 'write' : '' );
+        $add( $s['apple_team_id'] && $s['bundle_id'], 'Links to the site open in the iPhone app', 'Optional. Add your Apple Team ID under Advanced once you have your Apple account.', '', true );
+        $add( (bool) trim( (string) $s['android_sha256'] ), 'Links to the site open in the Android app', 'Optional. Filled in for you when you make the Android key on the Launch page.', '', true );
         $hp = (int) $s['home_page'];
-        $add( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ), 'The app opens on its own home screen', 'Apple turns down apps that are just the website. Pick a home screen look below and press Make the app home screen.' );
+        $add( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ), 'The app opens on its own home screen', 'Apple turns down apps that are just the website.', 'home' );
         $add( ! ( class_exists( 'WooCommerce' ) && self::sells_digital() ), 'No digital products sold on the site', 'You sell downloads or virtual products. Apple wants those bought with in-app purchase inside the iPhone app; ask us before launch.' );
         return $out;
     }
@@ -398,7 +398,8 @@ final class Marketur_App_Kit {
     /* ---------------------------------------------------------------- admin */
 
     public function menu() {
-        add_options_page( 'App Kit', 'App Kit', 'manage_options', 'marketur-app-kit', [ $this, 'page' ] );
+        add_menu_page( 'Your app', 'App Kit', 'manage_options', 'marketur-app-kit', [ $this, 'page' ], 'dashicons-smartphone', 3 );
+        add_submenu_page( 'marketur-app-kit', 'Your app', 'Your app', 'manage_options', 'marketur-app-kit', [ $this, 'page' ] );
     }
 
     public function save() {
@@ -406,6 +407,16 @@ final class Marketur_App_Kit {
         check_admin_referer( 'mak_save' );
         $in = wp_unslash( $_POST['mak'] ?? [] );
         $s  = self::get();
+        if ( ! empty( $_POST['mak_key_only'] ) ) {
+            $hk = trim( sanitize_text_field( $in['hub_key'] ?? '' ) );
+            if ( $hk !== '' ) {
+                $s['hub_key'] = $hk;
+                update_option( MAK_OPT, $s );
+                // Fill in what the order already knows straight away.
+                if ( class_exists( 'MAK_Autofill' ) ) { $r = MAK_Autofill::order(); set_transient( 'mak_auto_done_' . get_current_user_id(), [ is_wp_error( $r ) ? 'Connected. ' . $r->get_error_message() : 'Connected to Marketur. ' . $r ], 300 ); }
+            }
+            wp_safe_redirect( admin_url( 'admin.php?page=marketur-app-kit&saved=1' ) ); exit;
+        }
         foreach ( [ 'app_name', 'ua_tag', 'bundle_id', 'android_package', 'apple_team_id', 'subtitle', 'keywords', 'home_headline', 'home_phone', 'home_address' ] as $k ) $s[ $k ] = sanitize_text_field( $in[ $k ] ?? '' );
         $s['home_book'] = esc_url_raw( $in['home_book'] ?? '' );
         $s['home_email'] = sanitize_email( $in['home_email'] ?? '' );
@@ -428,119 +439,173 @@ final class Marketur_App_Kit {
         if ( $hk !== '' ) $s['hub_key'] = $hk;
         if ( ! empty( $in['hub_key_clear'] ) ) $s['hub_key'] = '';
         update_option( MAK_OPT, $s );
-        wp_safe_redirect( admin_url( 'options-general.php?page=marketur-app-kit&saved=1' ) ); exit;
+        wp_safe_redirect( admin_url( 'admin.php?page=marketur-app-kit&saved=1' ) ); exit;
     }
 
     public function page() {
         $s = self::get();
-        $f = function ( $k, $label, $help = '' ) use ( $s ) {
-            echo '<tr><th><label for="mak_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td><input class="regular-text" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']" value="' . esc_attr( $s[ $k ] ) . '">' . ( $help ? '<p class="description">' . wp_kses_post( $help ) . '</p>' : '' ) . '</td></tr>';
+        $f = function ( $k, $label, $help = '', $type = 'text' ) use ( $s ) {
+            echo '<tr><th><label for="mak_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td><input type="' . esc_attr( $type ) . '" class="regular-text" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']" value="' . esc_attr( $s[ $k ] ) . '">' . ( $help ? '<p class="description">' . wp_kses_post( $help ) . '</p>' : '' ) . '</td></tr>';
         };
-        $t = function ( $k, $label, $help = '', $rows = 4 ) use ( $s ) {
-            echo '<tr><th><label for="mak_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td><textarea class="large-text code" rows="' . (int) $rows . '" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>' . ( $help ? '<p class="description">' . wp_kses_post( $help ) . '</p>' : '' ) . '</td></tr>';
+        $t = function ( $k, $label, $help = '', $rows = 4, $extra = '' ) use ( $s ) {
+            echo '<tr><th><label for="mak_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td><textarea class="large-text" rows="' . (int) $rows . '" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>' . ( $help ? '<p class="description">' . wp_kses_post( $help ) . '</p>' : '' ) . $extra . '</td></tr>';
         };
+        $ai = function ( $op, $label ) { return '<button type="button" class="button mak-auto" data-op="' . esc_attr( $op ) . '"><span class="dashicons dashicons-admin-generic" style="margin-top:4px"></span> ' . esc_html( $label ) . '</button>'; };
+        $help = function ( $text ) { return '<details class="mak-help"><summary>What is this?</summary><p>' . wp_kses_post( $text ) . '</p></details>'; };
+        $ask = function ( $q ) { return '<a class="mak-ask" href="' . esc_url( admin_url( 'admin.php?page=mak-assistant&q=' . rawurlencode( $q ) ) ) . '">Ask the assistant</a>'; };
+        $checks = self::checks();
+        $todo = array_filter( $checks, function ( $c ) { return ! $c['ok'] && ! $c['later']; } );
+        $ready = count( $checks ) - count( $todo );
+        $done = get_transient( 'mak_auto_done_' . get_current_user_id() );
+        if ( $done ) delete_transient( 'mak_auto_done_' . get_current_user_id() );
+        $connected = (bool) $s['hub_key'];
         ?>
-<div class="wrap">
-  <h1>Marketur App Kit</h1>
+<div class="wrap mak-set">
+  <h1>Your app</h1>
   <?php if ( isset( $_GET['saved'] ) ) echo '<div class="notice notice-success"><p>Saved.</p></div>'; ?>
   <?php if ( isset( $_GET['made'] ) ) echo '<div class="notice notice-success"><p>The delete account page was made.</p></div>'; ?>
-  <h2>Is the site ready?</h2>
-  <table class="widefat striped" style="max-width:900px"><tbody>
-  <?php foreach ( self::checks() as $c ) : ?>
-    <tr><td style="width:28px;font-size:18px"><?php echo $c['ok'] ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#d97706">!</span>'; ?></td>
-    <td><strong><?php echo esc_html( $c['label'] ); ?></strong><?php if ( ! $c['ok'] && $c['fix'] ) echo '<br><span class="description">' . esc_html( $c['fix'] ) . '</span>'; ?></td></tr>
-  <?php endforeach; ?>
-  </tbody></table>
-  <p>
-    <?php if ( ! $s['delete_page'] || get_post_status( (int) $s['delete_page'] ) !== 'publish' ) : ?>
-      <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_make_delete_page' ), 'mak_make_delete_page' ) ); ?>">Make the delete account page</a>
-    <?php endif; ?>
-    <a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_export' ), 'mak_export' ) ); ?>">Download customer.json</a>
-    <span class="description">Send this file with your App Kit order. It holds the app name, colors, tabs and store text below.</span>
-  </p>
+  <?php if ( $done ) echo '<div class="notice notice-success"><p><strong>Done. Look it over below and change anything you like.</strong></p><ul style="list-style:disc;margin-left:20px">' . implode( '', array_map( function ( $d ) { return '<li>' . esc_html( $d ) . '</li>'; }, $done ) ) . '</ul></div>'; ?>
+
+  <?php if ( ! $connected ) : ?>
+  <div class="mak-card mak-key">
+    <h2>Step 1: connect to Marketur</h2>
+    <p>Paste the App Kit key you got after sending your app details. It fills in most of this page for you.</p>
+    <form method="post"><?php wp_nonce_field( 'mak_save' ); ?><input type="hidden" name="mak_save" value="1"><input type="hidden" name="mak_key_only" value="1">
+      <input type="password" name="mak[hub_key]" class="regular-text" placeholder="mak_..." autocomplete="off"> <button class="button button-primary">Connect</button>
+    </form>
+  </div>
+  <?php endif; ?>
+
+  <div class="mak-card mak-hero">
+    <div>
+      <h2>Let the AI set it up</h2>
+      <p>Fills in everything it can from your order and your site: name, tabs, colors, store text, privacy page, delete account page and the app home screen. Then you look it over. Takes about a minute.</p>
+    </div>
+    <div><?php echo $ai( 'all', 'Set up my app' ); ?><span class="mak-msg" data-for="all"></span></div>
+  </div>
+
+  <div class="mak-card">
+    <h2><?php echo count( $todo ) ? 'Left to do: ' . count( $todo ) : 'Ready for the stores'; ?> <span class="mak-sub"><?php echo (int) $ready; ?> of <?php echo count( $checks ); ?> checks pass</span></h2>
+    <?php foreach ( $checks as $c ) : if ( $c['ok'] ) continue; ?>
+      <div class="mak-chk<?php echo $c['later'] ? ' later' : ''; ?>">
+        <span class="mak-ic"><?php echo $c['later'] ? '&#9675;' : '!'; ?></span>
+        <div><strong><?php echo esc_html( $c['label'] ); ?></strong><br><span class="description"><?php echo esc_html( $c['fix'] ); ?></span></div>
+        <div><?php if ( $c['op'] ) echo $ai( $c['op'], 'Fix it' ) . '<span class="mak-msg" data-for="' . esc_attr( $c['op'] ) . '"></span>'; ?></div>
+      </div>
+    <?php endforeach; ?>
+    <details class="mak-help"><summary>See the <?php echo (int) $ready; ?> that pass</summary><ul><?php foreach ( $checks as $c ) if ( $c['ok'] ) echo '<li>&#10003; ' . esc_html( $c['label'] ) . '</li>'; ?></ul></details>
+  </div>
 
   <form method="post">
     <?php wp_nonce_field( 'mak_save' ); ?>
     <input type="hidden" name="mak_save" value="1">
-    <h2>The app</h2>
-    <table class="form-table">
-      <?php $f( 'app_name', 'App name', 'Up to 30 characters. Under the icon it is cut to about 12.' ); ?>
-      <?php $f( 'start', 'Start page', 'The page the app opens on.' ); ?>
-      <tr><th>Live settings</th><td>
-        <label><input type="checkbox" name="mak[live]" value="1" <?php checked( (int) $s['live'], 1 ); ?>> The app takes its tabs, colors, bar style and start page from here</label>
-        <p class="description">The app picks up changes the next time it is opened, with no new build. Leave off until these settings are right, or the app uses these instead of the ones it was built with.</p>
-      </td></tr>
-      <tr><th><label for="mak_nav">Bar style</label></th><td>
-        <select id="mak_nav" name="mak[nav]"><?php foreach ( self::navs() as $k => $v ) echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['nav'], $k, false ) . '>' . esc_html( $v ) . '</option>'; ?></select>
-      </td></tr>
-      <?php $t( 'tabs', 'Tab bar', 'One tab per line, up to 5: <code>Label|/path/|icon</code>. Icons: home, shop, cart, account, search, news, chat, community, bell, heart, star, map, phone, calendar, play, grid, info, menu.' ); ?>
-      <?php $t( 'onboarding', 'First launch screens', 'One screen per line: <code>Title|Text</code>. The last one asks to turn on notifications. Empty keeps the screens the app was built with.', 4 ); ?>
-      <tr><th>Colors</th><td>
-        <?php foreach ( $s['colors'] as $k => $v ) : ?>
-          <label style="display:inline-block;margin:0 14px 8px 0"><?php echo esc_html( ucfirst( $k ) ); ?><br><input type="color" name="mak[colors][<?php echo esc_attr( $k ); ?>]" value="<?php echo esc_attr( $v ); ?>"></label>
-        <?php endforeach; ?>
-        <p class="description">Top: the bar behind the clock. Bar: the tab bar. Active and Inactive: the tab icons. Paper and Ink: the onboarding and offline screens.</p>
-      </td></tr>
-    </table>
-    <h2>App home screen</h2>
-    <?php if ( isset( $_GET['made_home'] ) ) echo '<div class="notice notice-success inline"><p>The App Home page is made and the app opens on it.</p></div>'; ?>
-    <table class="form-table">
-      <tr><th>Look</th><td>
-        <?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) echo '<label style="display:block;margin:0 0 6px"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '> ' . esc_html( $v ) . '</label>'; ?>
-        <p>
-          <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) : ?>
-            <a class="button" href="<?php echo esc_url( get_permalink( $hp ) ); ?>" target="_blank">See the home screen</a>
-          <?php else : ?>
-            <a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_make_home' ), 'mak_make_home' ) ); ?>">Make the app home screen</a>
-          <?php endif; ?>
-        </p>
-        <p class="description">Required. Apple turns down apps that are just the website, so the app opens on this screen. It uses your own posts, products and links.</p>
-      </td></tr>
-      <?php $f( 'home_headline', 'Greeting', 'Shown to visitors. Members see Hi and their first name.' ); ?>
-      <?php $t( 'home_tiles', 'Shortcut tiles', 'Up to 8, one per line: <code>Label|/path/|icon</code>. Empty uses the tabs.', 4 ); ?>
-      <?php $f( 'home_phone', 'Phone (Local business look)' ); ?>
-      <?php $f( 'home_book', 'Booking link (Local business look)' ); ?>
-      <?php $f( 'home_address', 'Address (Local business look)' ); ?>
-      <?php $f( 'home_email', 'Email (Local business look)' ); ?>
-      <?php $t( 'home_hours', 'Opening hours (Local business look)', 'One line per day or range.', 3 ); ?>
-    </table>
-    <h2>Store pages</h2>
-    <table class="form-table">
-      <?php $f( 'subtitle', 'Subtitle', 'Up to 30 characters, under the name on the App Store. Also the start of the Google Play short description.' ); ?>
-      <?php $t( 'description', 'Description', 'What people can do in the app. Plain text, short lines with a dash work well. Up to 4000 characters.', 8 ); ?>
-      <?php $f( 'keywords', 'Keywords', 'Comma separated, up to 100 characters, no spaces after commas. iPhone only.' ); ?>
-      <?php $f( 'support_email', 'Support email', 'Shown to App Review and on Google Play.' ); ?>
-    </table>
-    <h2>Inside the app</h2>
-    <table class="form-table">
-      <?php $t( 'hide', 'Hide inside the app', 'CSS selectors, one per line. The app has its own tab bar, so the site menu and footer are usually hidden.', 6 ); ?>
-      <?php $t( 'css', 'Extra CSS inside the app', 'Only loads inside the app. Every page has <code>html.mak-app</code> there.', 4 ); ?>
-      <tr><th>Delete account</th><td>
-        <label><input type="radio" name="mak[delete_mode]" value="now" <?php checked( $s['delete_mode'], 'now' ); ?>> Delete straight away</label><br>
-        <label><input type="radio" name="mak[delete_mode]" value="request" <?php checked( $s['delete_mode'], 'request' ); ?>> Email me a request and I delete it</label>
-        <p class="description">Page with <code>[mak_delete_account]</code>: <?php wp_dropdown_pages( [ 'name' => 'mak[delete_page]', 'selected' => (int) $s['delete_page'], 'show_option_none' => 'None' ] ); ?></p>
-      </td></tr>
-      <?php $f( 'ua_tag', 'App tag', 'The app adds this to its user agent. Leave it unless we tell you.' ); ?>
-    </table>
-    <h2>Marketur</h2>
-    <table class="form-table">
-      <tr><th><label for="mak_hub_key">App Kit key</label></th><td>
-        <input type="password" class="regular-text" id="mak_hub_key" name="mak[hub_key]" value="" autocomplete="off" placeholder="<?php echo $s['hub_key'] ? 'Saved. Paste a new one to replace it.' : 'From your Marketur account'; ?>">
-        <?php if ( $s['hub_key'] ) : ?><label style="margin-left:10px"><input type="checkbox" name="mak[hub_key_clear]" value="1"> Remove</label><?php endif; ?>
-        <p class="description">Lets this site (and the AI connected to it) start new app builds through Marketur. It is never shown again after saving.</p>
-      </td></tr>
-    </table>
-    <h2>App links</h2>
-    <table class="form-table">
-      <?php $f( 'bundle_id', 'Bundle id', 'For example com.yoursite.app (from your App Kit order).' ); ?>
-      <?php $f( 'android_package', 'Android package', 'Leave empty when it is the same as the bundle id.' ); ?>
-      <?php $f( 'apple_team_id', 'Apple Team ID', '10 letters and digits, developer.apple.com > Membership details.' ); ?>
-      <?php $t( 'android_sha256', 'Android SHA-256', 'Play Console > App integrity > App signing key certificate SHA-256 (and the upload key one). One per line.', 3 ); ?>
-    </table>
-    <?php submit_button(); ?>
+
+    <div class="mak-card">
+      <h2>How the app looks</h2>
+      <?php echo $help( 'This is what people see when they open your app. The name shows under the icon on their phone. The home screen is the first page of the app. Tabs are the buttons along the bottom. The app reads these from your site every time it opens, so you can change them later without a new version.' ); ?>
+      <table class="form-table">
+        <?php $f( 'app_name', 'App name', 'Up to 30 characters. Under the icon on a phone it shows about 12.' ); ?>
+        <tr><th>Home screen</th><td>
+          <?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) echo '<label style="display:block;margin:0 0 6px"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '> ' . esc_html( $v ) . '</label>'; ?>
+          <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) echo '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See it</a></p>'; else echo '<p>' . $ai( 'home', 'Make the home screen' ) . '<span class="mak-msg" data-for="home"></span></p>'; ?>
+          <p class="description">Required: Apple turns down apps that are just the website. Built from your own posts, products and links.</p>
+        </td></tr>
+        <?php $t( 'tabs', 'Bottom tabs', 'One per line: <code>Label|/page-address/|icon</code>, up to 5. Icons: home, shop, cart, account, search, news, chat, community, bell, heart, star, map, phone, calendar, play, grid, info, menu.', 5, '<p>' . $ai( 'tabs', 'Make tabs from my menu' ) . '<span class="mak-msg" data-for="tabs"></span> ' . $ask( 'Which tabs should my app have?' ) . '</p>' ); ?>
+        <tr><th><label for="mak_nav">Tab bar style</label></th><td>
+          <select id="mak_nav" name="mak[nav]"><?php foreach ( self::navs() as $k => $v ) echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['nav'], $k, false ) . '>' . esc_html( $v ) . '</option>'; ?></select>
+        </td></tr>
+        <tr><th>Colors</th><td>
+          <?php $names = [ 'top' => 'Top bar', 'bar' => 'Tab bar', 'active' => 'Selected tab', 'inactive' => 'Other tabs', 'paper' => 'Background', 'ink' => 'Text', 'muted' => 'Soft text' ];
+          foreach ( $s['colors'] as $k => $v ) echo '<label class="mak-col">' . esc_html( $names[ $k ] ?? ucfirst( $k ) ) . '<br><input type="color" name="mak[colors][' . esc_attr( $k ) . ']" value="' . esc_attr( $v ) . '"></label>'; ?>
+          <p><?php echo $ai( 'colors', 'Use my site\'s colors' ); ?><span class="mak-msg" data-for="colors"></span></p>
+        </td></tr>
+      </table>
+    </div>
+
+    <div class="mak-card">
+      <h2>The store page</h2>
+      <?php echo $help( 'What people read on the App Store and Google Play before they download your app. The subtitle sits under the app name, the description says what the app does, and the keywords help people find it in search (iPhone only, nobody sees them).' ); ?>
+      <p><?php echo $ai( 'write', 'Write it with AI' ); ?><span class="mak-msg" data-for="write"></span> <span class="description">Writes the subtitle, description, keywords, home screen greeting and first launch screens from your site.</span></p>
+      <table class="form-table">
+        <?php $f( 'subtitle', 'Subtitle', 'Up to 30 characters.' ); ?>
+        <?php $t( 'description', 'Description', 'Up to 4000 characters.', 8 ); ?>
+        <?php $f( 'keywords', 'Keywords', 'Comma separated, up to 100 characters.' ); ?>
+        <?php $f( 'support_email', 'Support email', 'Apple\'s reviewers and Google Play show this.', 'email' ); ?>
+      </table>
+    </div>
+
+    <details class="mak-card mak-adv">
+      <summary><h2 style="display:inline">Advanced</h2> <span class="mak-sub">first launch screens, home screen details, what is hidden in the app, links, your key</span></summary>
+      <table class="form-table">
+        <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made.' ); ?>
+        <tr><th>Live settings</th><td>
+          <label><input type="checkbox" name="mak[live]" value="1" <?php checked( (int) $s['live'], 1 ); ?>> The app reads its tabs, colors, tab bar style and start page from here each time it opens</label>
+          <p class="description">Turned on for you by Set up my app. With it off, the app keeps what it was built with.</p>
+        </td></tr>
+        <?php $t( 'onboarding', 'First launch screens', 'Shown once, the first time someone opens the app. One per line: <code>Title|Text</code>. The last one asks to turn on notifications.', 4 ); ?>
+        <?php $f( 'home_headline', 'Home screen greeting', 'Visitors see this. Members see Hi and their first name.' ); ?>
+        <?php $t( 'home_tiles', 'Home screen shortcuts', 'Up to 8, one per line: <code>Label|/page-address/|icon</code>. Empty uses the tabs.', 4 ); ?>
+        <?php $f( 'home_phone', 'Phone (local business look)' ); ?>
+        <?php $f( 'home_book', 'Booking link (local business look)' ); ?>
+        <?php $f( 'home_address', 'Address (local business look)' ); ?>
+        <?php $f( 'home_email', 'Email (local business look)' ); ?>
+        <?php $t( 'home_hours', 'Opening hours (local business look)', 'One line per day or range.', 3 ); ?>
+        <?php $t( 'hide', 'Hidden inside the app', 'Parts of your site the app hides, because it has its own tabs (one CSS selector per line). The usual header and footer are already here.', 5 ); ?>
+        <?php $t( 'css', 'Extra CSS inside the app', 'Only loads inside the app. Pages there have <code>html.mak-app</code>.', 3 ); ?>
+        <tr><th>Delete account</th><td>
+          <label><input type="radio" name="mak[delete_mode]" value="now" <?php checked( $s['delete_mode'], 'now' ); ?>> Delete straight away</label><br>
+          <label><input type="radio" name="mak[delete_mode]" value="request" <?php checked( $s['delete_mode'], 'request' ); ?>> Email me a request and I delete it</label>
+          <p class="description">Page: <?php wp_dropdown_pages( [ 'name' => 'mak[delete_page]', 'selected' => (int) $s['delete_page'], 'show_option_none' => 'None' ] ); ?></p>
+        </td></tr>
+        <tr><th><label for="mak_hub_key">App Kit key</label></th><td>
+          <input type="password" class="regular-text" id="mak_hub_key" name="mak[hub_key]" value="" autocomplete="off" placeholder="<?php echo $s['hub_key'] ? 'Saved. Paste a new one to replace it.' : 'From your Marketur order'; ?>">
+          <?php if ( $s['hub_key'] ) : ?><label style="margin-left:10px"><input type="checkbox" name="mak[hub_key_clear]" value="1"> Remove</label> <?php echo $ai( 'order', 'Fill in from my order again' ); ?><span class="mak-msg" data-for="order"></span><?php endif; ?>
+        </td></tr>
+        <?php $f( 'bundle_id', 'App id (bundle id)', 'From your order, for example com.yoursite.app.' ); ?>
+        <?php $f( 'android_package', 'Android app id', 'Leave empty when it is the same.' ); ?>
+        <?php $f( 'apple_team_id', 'Apple Team ID', 'Optional, so links to your site open in the app. developer.apple.com &gt; Account &gt; Membership details.' ); ?>
+        <?php $t( 'android_sha256', 'Android key fingerprint', 'Filled in for you on the Launch page.', 2 ); ?>
+        <?php $f( 'ua_tag', 'App tag', 'Leave this unless Marketur asks.' ); ?>
+      </table>
+      <p class="description">Marketur App Kit <?php echo esc_html( MAK_VERSION ); ?>. <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_export' ), 'mak_export' ) ); ?>">Download these settings</a></p>
+    </details>
+
+    <p><button class="button button-primary button-hero">Save</button> &nbsp; <a href="<?php echo esc_url( admin_url( 'admin.php?page=mak-launch' ) ); ?>">Next: Launch &rarr;</a></p>
   </form>
-  <p class="description">Marketur App Kit <?php echo esc_html( MAK_VERSION ); ?>. Links: <code><?php echo esc_html( home_url( '/.well-known/apple-app-site-association' ) ); ?></code> and <code><?php echo esc_html( home_url( '/.well-known/assetlinks.json' ) ); ?></code></p>
 </div>
+<style>
+.mak-set .mak-card{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:16px 20px;margin:14px 0;max-width:980px}
+.mak-set .mak-card h2{margin:4px 0 8px;font-size:17px}
+.mak-set .mak-hero{display:flex;gap:20px;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#f0f6fc,#fff);border-color:#c5d9ed}
+.mak-set .mak-hero .mak-auto{font-size:15px;padding:6px 18px;background:#2271b1;color:#fff;border-color:#2271b1}
+.mak-set .mak-key{border-color:#dba617;background:#fffbea}
+.mak-set .mak-sub{font-weight:400;color:#646970;font-size:13px;margin-left:6px}
+.mak-set .mak-chk{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #f0f0f1}
+.mak-set .mak-ic{color:#d97706;font-weight:700;font-size:18px;text-align:center}
+.mak-set .later .mak-ic{color:#8c8f94}.mak-set .later strong{color:#50575e;font-weight:500}
+.mak-set .mak-help summary{cursor:pointer;color:#2271b1;margin:2px 0 8px}
+.mak-set .mak-help p{background:#f6f7f7;border-radius:8px;padding:10px 12px;max-width:760px}
+.mak-set .mak-adv>summary{cursor:pointer;list-style:none}
+.mak-set .mak-col{display:inline-block;margin:0 14px 8px 0;font-size:12px}
+.mak-set .mak-msg{margin-left:8px;font-size:13px}.mak-set .mak-msg.bad{color:#b32d2e}.mak-set .mak-msg.good{color:#007017}
+.mak-set .mak-ask{margin-left:10px}
+.mak-set .form-table th{width:180px}
+</style>
+<script>
+(function(){
+  var url=<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,nonce=<?php echo wp_json_encode( wp_create_nonce( 'mak_auto' ) ); ?>;
+  document.querySelectorAll('.mak-set .mak-auto').forEach(function(b){b.addEventListener('click',function(){
+    var op=b.dataset.op,msg=document.querySelector('.mak-set .mak-msg[data-for="'+op+'"]');
+    b.disabled=true;if(msg){msg.className='mak-msg';msg.textContent=op==='all'||op==='write'?'Working on it, this can take a minute...':'Working...';}
+    var f=new FormData();f.append('action','mak_auto');f.append('nonce',nonce);f.append('op',op);
+    fetch(url,{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){
+      b.disabled=false;
+      if(!j||!j.success){if(msg){msg.className='mak-msg bad';msg.textContent=(j&&j.data&&j.data.message)||'That did not work. Try again.';}return;}
+      location.href=location.pathname+'?page=marketur-app-kit&auto=1';
+    }).catch(function(){b.disabled=false;if(msg){msg.className='mak-msg bad';msg.textContent='Lost the connection. Try again.';}});
+  });});
+})();
+</script>
         <?php
     }
 }
@@ -556,3 +621,4 @@ require_once __DIR__ . '/includes/assistant.php';
 require_once __DIR__ . '/includes/launch.php';
 require_once __DIR__ . '/includes/home.php';
 require_once __DIR__ . '/includes/starter.php';
+require_once __DIR__ . '/includes/autofill.php';

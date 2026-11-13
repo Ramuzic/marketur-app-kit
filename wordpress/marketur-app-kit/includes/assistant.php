@@ -24,12 +24,12 @@ final class MAK_Assistant {
     const STEPS = 16;
 
     public static function init() {
-        add_action( 'admin_menu', [ __CLASS__, 'menu' ] );
+        add_action( 'admin_menu', [ __CLASS__, 'menu' ], 15 );
         add_action( 'wp_ajax_mak_assist', [ __CLASS__, 'ajax' ] );
     }
 
     public static function menu() {
-        add_menu_page( 'Assistant', 'Assistant', 'manage_options', 'mak-assistant', [ __CLASS__, 'page' ], 'dashicons-format-chat', 3 );
+        add_submenu_page( 'marketur-app-kit', 'Assistant', 'Assistant', 'manage_options', 'mak-assistant', [ __CLASS__, 'page' ] );
     }
 
     /* ---------------------------------------------------------------- tools */
@@ -128,7 +128,7 @@ final class MAK_Assistant {
 
     private static function hub( $method, $path, $body = null ) {
         $key = (string) Marketur_App_Kit::get( 'hub_key' );
-        if ( $key === '' ) return new WP_Error( 'no_key', 'Connect this site to Marketur first: paste your App Kit key under Settings > App Kit.' );
+        if ( $key === '' ) return new WP_Error( 'no_key', 'Connect this site to Marketur first: paste your App Kit key under App Kit > Your app.' );
         $url = trailingslashit( (string) apply_filters( 'mak_hub_url', 'https://marketur.net' ) ) . 'wp-json/mak-hub/v1/' . $path;
         $args = [ 'timeout' => 100, 'headers' => [ 'X-MAK-Key' => $key, 'X-MAK-Site' => home_url( '/' ), 'Content-Type' => 'application/json' ] ];
         if ( $method === 'POST' ) { $args['body'] = wp_json_encode( $body ); $r = wp_remote_post( $url, $args ); }
@@ -211,7 +211,7 @@ final class MAK_Assistant {
 <div class="wrap mak-as">
   <h1>Assistant</h1>
   <p class="description">Ask for changes to your app or your website in plain words. It reads first, makes the change, and tells you what it did. <?php echo self::mcp_on() ? 'It can work on your whole website through the Marketur MCP plugin.' : 'Right now it can change your app. Switch on the Marketur MCP plugin and it can work on your whole website too.'; ?></p>
-  <?php if ( ! $connected ) : ?><div class="notice notice-warning inline"><p>Paste your App Kit key under <a href="<?php echo esc_url( admin_url( 'options-general.php?page=marketur-app-kit' ) ); ?>">Settings &gt; App Kit</a> to switch the assistant on.</p></div><?php endif; ?>
+  <?php if ( ! $connected ) : ?><div class="notice notice-warning inline"><p>Paste your App Kit key under <a href="<?php echo esc_url( admin_url( 'admin.php?page=marketur-app-kit' ) ); ?>">App Kit &gt; Your app</a> to switch the assistant on.</p></div><?php endif; ?>
   <div id="mak-log"></div>
   <form id="mak-form">
     <textarea id="mak-in" rows="3" placeholder="For example: make the bottom bar fixed and add a Shop tab"></textarea>
@@ -240,6 +240,8 @@ final class MAK_Assistant {
   function add(cls,text,html){var d=document.createElement('div');d.className='m '+cls;d.innerHTML=html?text:fmt(text);log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
   past.forEach(function(p){add(p.who,p.text);});
   if(!past.length)add('ai','Hi. What would you like to change on your app or your website?');
+  var q=<?php echo wp_json_encode( isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '' ); ?>;
+  if(q){inp.value=q;setTimeout(function(){document.getElementById('mak-form').requestSubmit();},300);}
   function post(data){var f=new FormData();f.append('action','mak_assist');f.append('nonce',nonce);for(var k in data)f.append(k,data[k]);return fetch(url,{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();});}
   function step(data,n,wait){
     return post(data).then(function(j){

@@ -22,7 +22,7 @@ final class MAK_Starter {
     }
 
     public static function menu() {
-        add_submenu_page( 'mak-assistant', 'Starter Kit', 'Starter Kit', 'manage_options', 'mak-starter', [ __CLASS__, 'page' ] );
+        add_submenu_page( 'marketur-app-kit', 'Starter Kit', 'Starter Kit', 'manage_options', 'mak-starter', [ __CLASS__, 'page' ] );
     }
 
     private static function upgrader_files() {
@@ -130,7 +130,7 @@ final class MAK_Starter {
     <input type="hidden" name="action" value="mak_starter"><?php wp_nonce_field( 'mak_starter' ); ?>
     <p><label><input type="checkbox" name="parts[]" value="theme"> <strong>Astra theme</strong> (switches your theme to Astra. Leave this off if you like your current design)</label></p>
     <p><label><input type="checkbox" name="parts[]" value="elementor" checked> <strong>Elementor</strong> page builder</label></p>
-    <p><label><input type="checkbox" name="parts[]" value="marketur" checked <?php disabled( ! $connected ); ?>> <strong>Marketur plugins from your plan</strong>, including Marketur MCP, which lets the Assistant build your pages<?php if ( ! $connected ) echo ' <em>(connect to Marketur under Settings &gt; App Kit first)</em>'; ?></label></p>
+    <p><label><input type="checkbox" name="parts[]" value="marketur" checked <?php disabled( ! $connected ); ?>> <strong>Marketur plugins from your plan</strong>, including Marketur MCP, which lets the Assistant build your pages<?php if ( ! $connected ) echo ' <em>(connect to Marketur under App Kit &gt; Your app first)</em>'; ?></label></p>
     <p><label><input type="checkbox" name="parts[]" value="pages" checked> <strong>Starter pages</strong>: Home, About, Contact, Privacy Policy, Delete Your Account and the App Home screen (pages you already have are left alone)</label></p>
     <p><button class="button button-primary button-hero">Set it up</button></p>
     <p class="description">Takes a minute or two. Nothing you already have is deleted.</p>
