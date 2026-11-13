@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.8.2
+ * Version: 1.8.3
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.8.2' );
+define( 'MAK_VERSION', '1.8.3' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -179,7 +179,7 @@ final class Marketur_App_Kit {
         if ( $s['look'] !== 'pwa' ) return $own ?: ( $s['start'] ?: home_url( '/' ) );
         $start = (string) $s['start'];
         if ( $start !== '' && ( $own === '' || untrailingslashit( $start ) !== untrailingslashit( $own ) ) ) return $start;
-        $m = (array) get_option( 'mpwa_manifest', [] );
+        $m = class_exists( 'Marketur_PWA' ) && method_exists( 'Marketur_PWA', 'get_option' ) ? (array) Marketur_PWA::get_option( 'mpwa_general' ) : (array) get_option( 'mpwa_general', [] );
         $u = (string) ( $m['start_url'] ?? '' );
         if ( $u !== '' ) return preg_match( '#^https?://#', $u ) ? $u : home_url( '/' . ltrim( $u, '/' ) );
         return home_url( '/' );

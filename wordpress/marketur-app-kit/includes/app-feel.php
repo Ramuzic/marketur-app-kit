@@ -1,6 +1,6 @@
 <?php
 /**
- * The app feel (App Kit 1.8.2), taken from the NexURLs app.
+ * The app feel (App Kit 1.8.3), taken from the NexURLs app.
  *
  * Inside the iPhone and Android app only (the website is unchanged):
  *  - links to other websites open in an in-app browser sheet with a Done button,
@@ -68,6 +68,15 @@ final class MAK_App_Feel {
         if (el.tagName === 'LABEL' && el.control && /^(text|email|password|search|tel|url|number)$/.test(el.control.type || '')) return;
         hap('light');
     }, true);
+    /* PWA PowerUp's bottom bar handles taps on touchend and cancels the click, and its own buzz does not work inside this app. Buzz on the touch itself. */
+    var tx = 0, ty = 0;
+    document.addEventListener('touchstart', function (e) { var t = e.touches && e.touches[0]; if (t) { tx = t.clientX; ty = t.clientY; } }, { capture: true, passive: true });
+    document.addEventListener('touchend', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('.mpwa-nav-link,.mpwa-more-link,.mpwa-more-close') : null;
+        var t = e.changedTouches && e.changedTouches[0];
+        if (!el || !t || Math.abs(t.clientX - tx) > 8 || Math.abs(t.clientY - ty) > 8) return;
+        hap('light');
+    }, { capture: true, passive: true });
     document.addEventListener('change', function (e) {
         var t = e.target; if (!t || !t.tagName) return;
         if (t.tagName === 'SELECT' || t.type === 'checkbox' || t.type === 'radio' || t.type === 'range') hap('selection');
