@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.3.0' );
+define( 'MAK_VERSION', '1.4.0' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -506,3 +506,4 @@ function mak_is_plugin_active( $f ) {
 Marketur_App_Kit::instance();
 require_once __DIR__ . '/includes/ai-tools.php';
 require_once __DIR__ . '/includes/assistant.php';
+require_once __DIR__ . '/includes/launch.php';

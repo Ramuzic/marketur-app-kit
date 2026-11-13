@@ -85,6 +85,13 @@ final class MAK_AI_Tools {
             'write'       => true,
             'cap'         => 'manage_options',
         ];
+        $tools['app_launch_status'] = [
+            'description' => 'Where this app is on the way into the App Store and Google Play: which keys have been handed over, which builds are done, which steps the owner ticked as done on the Launch page, and the exact app name, bundle id and SKU to type into App Store Connect. Use it to tell the owner the next step.',
+            'inputSchema' => [ 'type' => 'object', 'properties' => (object) [] ],
+            'callback'    => [ __CLASS__, 'launch' ],
+            'write'       => false,
+            'cap'         => 'manage_options',
+        ];
         $tools['app_build_status'] = [
             'description' => 'How the latest phone app builds went (running, finished, failed and why), from Marketur.',
             'inputSchema' => [ 'type' => 'object', 'properties' => (object) [] ],
@@ -170,7 +177,7 @@ final class MAK_AI_Tools {
 
     /* ---------------------------------------------------------------- Marketur */
 
-    private static function hub( $path, $body = null ) {
+    public static function hub( $path, $body = null ) {
         $key = (string) Marketur_App_Kit::get( 'hub_key' );
         if ( $key === '' ) return new WP_Error( 'no_key', 'This site is not connected to Marketur yet. Paste the App Kit key from your Marketur account under Settings > App Kit.' );
         $url = trailingslashit( (string) apply_filters( 'mak_hub_url', 'https://marketur.net' ) ) . 'wp-json/mak-hub/v1/' . $path;
@@ -212,6 +219,14 @@ final class MAK_AI_Tools {
             return [ 'dry_run' => true, 'kind' => $kind, 'quota' => is_wp_error( $q ) ? $q->get_error_message() : $q, 'note' => 'Nothing started. Call again with confirm=true.' ];
         }
         return self::hub( 'build', [ 'kind' => $kind, 'settings' => self::payload() ] );
+    }
+
+    public static function launch( $a ) {
+        $r = self::hub( 'launch' );
+        if ( is_wp_error( $r ) ) return $r;
+        $r['ticked_by_owner'] = (array) get_option( 'mak_launch_flags', [] );
+        $r['launch_page'] = admin_url( 'admin.php?page=mak-launch' );
+        return $r;
     }
 
     public static function status( $a ) {
