@@ -41,6 +41,7 @@ final class MAK_AI_Tools {
                 'properties' => [
                     'app_name'    => [ 'type' => 'string', 'description' => 'Up to 30 characters. Needs a new build.' ],
                     'start'       => [ 'type' => 'string', 'description' => 'Full URL on this site the app opens on.' ],
+                    'site_brief'  => [ 'type' => 'string', 'description' => 'The note on what the business is, who it is for and why people open the app. Everything written for the app starts from it. Change it when the owner corrects it.' ],
                     'nav'         => [ 'type' => 'string', 'enum' => array_keys( Marketur_App_Kit::navs() ), 'description' => 'Bar style.' ],
                     'tabs'        => [ 'type' => 'string', 'description' => 'One tab per line: Label|/path/|icon' ],
                     'colors'      => [ 'type' => 'object', 'description' => 'Any of top, bar, active, inactive, paper, ink, muted as #RRGGBB.' ],
@@ -191,11 +192,11 @@ final class MAK_AI_Tools {
 
     /* ---------------------------------------------------------------- Marketur */
 
-    public static function hub( $path, $body = null ) {
+    public static function hub( $path, $body = null, $timeout = 25 ) {
         $key = (string) Marketur_App_Kit::get( 'hub_key' );
         if ( $key === '' ) return new WP_Error( 'no_key', 'This site is not connected to Marketur yet. Paste the App Kit key from your Marketur account under App Kit > Your app.' );
         $url = trailingslashit( (string) apply_filters( 'mak_hub_url', 'https://marketur.net' ) ) . 'wp-json/mak-hub/v1/' . $path;
-        $args = [ 'timeout' => 25, 'headers' => [ 'X-MAK-Key' => $key, 'X-MAK-Site' => home_url( '/' ), 'Content-Type' => 'application/json' ] ];
+        $args = [ 'timeout' => (int) $timeout, 'headers' => [ 'X-MAK-Key' => $key, 'X-MAK-Site' => home_url( '/' ), 'Content-Type' => 'application/json' ] ];
         if ( $body !== null ) { $args['body'] = wp_json_encode( $body ); $r = wp_remote_post( $url, $args ); }
         else $r = wp_remote_get( $url, $args );
         if ( is_wp_error( $r ) ) return new WP_Error( 'hub_down', 'Could not reach Marketur: ' . $r->get_error_message() );

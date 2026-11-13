@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.6.0' );
+define( 'MAK_VERSION', '1.7.0' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -29,6 +29,8 @@ final class Marketur_App_Kit {
         add_filter( 'body_class', [ $this, 'body_class' ] );
         add_action( 'wp_footer', [ $this, 'footer' ], 99 );
         add_shortcode( 'mak_delete_account', [ $this, 'delete_shortcode' ] );
+        // The phone preview on the Your app page shows the site the way the app does.
+        add_filter( 'show_admin_bar', function ( $v ) { return ! empty( $_GET['mak_preview'] ) ? false : $v; } );
         add_action( 'template_redirect', [ $this, 'delete_post' ] );
         add_action( 'admin_menu', [ $this, 'menu' ] );
         add_action( 'admin_init', [ $this, 'save' ] );
@@ -81,6 +83,7 @@ final class Marketur_App_Kit {
             'subtitle'       => '',
             'keywords'       => '',
             'support_email'  => get_option( 'admin_email' ),
+            'site_brief'     => '',
         ];
     }
 
@@ -94,7 +97,7 @@ final class Marketur_App_Kit {
     public static function in_app() {
         $ua  = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
         $tag = trim( (string) self::get( 'ua_tag' ) );
-        $in  = ( $tag !== '' && stripos( $ua, $tag ) !== false ) || stripos( $ua, 'MarketurApp' ) !== false;
+        $in  = ( $tag !== '' && stripos( $ua, $tag ) !== false ) || stripos( $ua, 'MarketurApp' ) !== false || ! empty( $_GET['mak_preview'] );
         return (bool) apply_filters( 'mak_in_app', $in, $ua );
     }
 
@@ -203,7 +206,7 @@ final class Marketur_App_Kit {
         if ( isset( $in['home_email'] ) ) $s['home_email'] = sanitize_email( $in['home_email'] );
         if ( isset( $in['home_template'] ) && class_exists( 'MAK_Home' ) && isset( MAK_Home::templates()[ $in['home_template'] ] ) ) $s['home_template'] = $in['home_template'];
         if ( isset( $in['start'] ) ) $s['start'] = esc_url_raw( $in['start'] );
-        foreach ( [ 'tabs', 'onboarding', 'description', 'hide', 'home_tiles', 'home_hours' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] );
+        foreach ( [ 'tabs', 'onboarding', 'description', 'hide', 'home_tiles', 'home_hours', 'site_brief' ] as $k ) if ( isset( $in[ $k ] ) ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] );
         if ( isset( $in['css'] ) ) $s['css'] = wp_strip_all_tags( $in['css'] );
         if ( isset( $in['nav'] ) && isset( self::navs()[ $in['nav'] ] ) ) $s['nav'] = $in['nav'];
         if ( isset( $in['live'] ) ) $s['live'] = $in['live'] ? 1 : 0;
@@ -425,7 +428,7 @@ final class Marketur_App_Kit {
         if ( class_exists( 'MAK_Home' ) && isset( MAK_Home::templates()[ $in['home_template'] ?? '' ] ) ) $s['home_template'] = $in['home_template'];
         $s['start'] = esc_url_raw( $in['start'] ?? '' );
         $s['support_email'] = sanitize_email( $in['support_email'] ?? '' );
-        foreach ( [ 'hide', 'tabs', 'android_sha256', 'description' ] as $k ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] ?? '' );
+        foreach ( [ 'hide', 'tabs', 'android_sha256', 'description', 'site_brief' ] as $k ) $s[ $k ] = sanitize_textarea_field( $in[ $k ] ?? '' );
         $s['css'] = wp_strip_all_tags( $in['css'] ?? '' );
         $s['delete_mode'] = ( $in['delete_mode'] ?? '' ) === 'request' ? 'request' : 'now';
         $s['delete_page'] = absint( $in['delete_page'] ?? 0 );
@@ -450,101 +453,131 @@ final class Marketur_App_Kit {
         $t = function ( $k, $label, $help = '', $rows = 4, $extra = '' ) use ( $s ) {
             echo '<tr><th><label for="mak_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td><textarea class="large-text" rows="' . (int) $rows . '" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>' . ( $help ? '<p class="description">' . wp_kses_post( $help ) . '</p>' : '' ) . $extra . '</td></tr>';
         };
-        $ai = function ( $op, $label ) { return '<button type="button" class="button mak-auto" data-op="' . esc_attr( $op ) . '"><span class="dashicons dashicons-admin-generic" style="margin-top:4px"></span> ' . esc_html( $label ) . '</button>'; };
+        $ai = function ( $op, $label, $big = false ) { return '<button type="button" class="button mak-auto' . ( $big ? ' big' : '' ) . '" data-op="' . esc_attr( $op ) . '">' . MAK_Admin_UI::sparkle( $big ? 18 : 15 ) . '<span>' . esc_html( $label ) . '</span></button>'; };
+        $msg = function ( $op ) { return '<span class="mak-msg" data-for="' . esc_attr( $op ) . '"></span>'; };
         $help = function ( $text ) { return '<details class="mak-help"><summary>What is this?</summary><p>' . wp_kses_post( $text ) . '</p></details>'; };
         $ask = function ( $q ) { return '<a class="mak-ask" href="' . esc_url( admin_url( 'admin.php?page=mak-assistant&q=' . rawurlencode( $q ) ) ) . '">Ask the assistant</a>'; };
+        $rows = function ( $k, $max, $noun, $help ) use ( $s ) {
+            return '<div class="mak-rows" data-target="mak_' . esc_attr( $k ) . '" data-max="' . (int) $max . '" data-noun="' . esc_attr( $noun ) . '"></div>'
+                . '<details class="mak-raw"><summary>Edit as text</summary><textarea class="large-text code" rows="5" id="mak_' . esc_attr( $k ) . '" name="mak[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea><p class="description">' . wp_kses_post( $help ) . '</p></details>';
+        };
         $checks = self::checks();
         $todo = array_filter( $checks, function ( $c ) { return ! $c['ok'] && ! $c['later']; } );
         $ready = count( $checks ) - count( $todo );
         $done = get_transient( 'mak_auto_done_' . get_current_user_id() );
         if ( $done ) delete_transient( 'mak_auto_done_' . get_current_user_id() );
         $connected = (bool) $s['hub_key'];
+        $icon = get_site_icon_url( 128 );
+        $start = $s['start'] ?: home_url( '/' );
         ?>
 <div class="wrap mak-set">
-  <h1>Your app</h1>
-  <?php if ( isset( $_GET['saved'] ) ) echo '<div class="notice notice-success"><p>Saved.</p></div>'; ?>
+  <div class="mak-head">
+    <span class="mak-appicon"><?php if ( $icon ) echo '<img src="' . esc_url( $icon ) . '" alt="">'; else echo MAK_Admin_UI::svg( 'home', 28 ); ?></span>
+    <div class="mak-head-t">
+      <h1>Your app</h1>
+      <div class="mak-chips">
+        <span class="mak-chip <?php echo $connected ? 'ok' : 'warn'; ?>"><?php echo $connected ? 'Connected to Marketur' : 'Not connected yet'; ?></span>
+        <span class="mak-chip <?php echo $s['live'] ? 'ok' : ''; ?>"><?php echo $s['live'] ? 'Live settings on' : 'Live settings off'; ?></span>
+        <span class="mak-chip <?php echo $todo ? 'warn' : 'ok'; ?>"><?php echo $todo ? count( $todo ) . ' left to do' : 'Ready for the stores'; ?></span>
+      </div>
+    </div>
+    <a class="button button-primary mak-head-go" href="<?php echo esc_url( admin_url( 'admin.php?page=mak-launch' ) ); ?>">Launch &rarr;</a>
+  </div>
+  <?php if ( isset( $_GET['saved'] ) && ! $done ) echo '<div class="notice notice-success"><p>Saved.</p></div>'; ?>
   <?php if ( isset( $_GET['made'] ) ) echo '<div class="notice notice-success"><p>The delete account page was made.</p></div>'; ?>
-  <?php if ( $done ) echo '<div class="notice notice-success"><p><strong>Done. Look it over below and change anything you like.</strong></p><ul style="list-style:disc;margin-left:20px">' . implode( '', array_map( function ( $d ) { return '<li>' . esc_html( $d ) . '</li>'; }, $done ) ) . '</ul></div>'; ?>
+  <?php if ( $done ) echo '<div class="notice notice-success mak-done"><p><strong>Done. Look it over below and change anything you like.</strong></p><ul>' . implode( '', array_map( function ( $d ) { return '<li>' . esc_html( $d ) . '</li>'; }, (array) $done ) ) . '</ul></div>'; ?>
+
+  <div class="mak-grid"><div class="mak-main">
 
   <?php if ( ! $connected ) : ?>
   <div class="mak-card mak-key">
     <h2>Step 1: connect to Marketur</h2>
-    <p>Paste the App Kit key you got after sending your app details. It fills in most of this page for you.</p>
-    <form method="post"><?php wp_nonce_field( 'mak_save' ); ?><input type="hidden" name="mak_save" value="1"><input type="hidden" name="mak_key_only" value="1">
+    <p>Paste the App Kit key you got after sending your app details. It fills in most of this page for you and switches the AI on.</p>
+    <form method="post" class="mak-inline"><?php wp_nonce_field( 'mak_save' ); ?><input type="hidden" name="mak_save" value="1"><input type="hidden" name="mak_key_only" value="1">
       <input type="password" name="mak[hub_key]" class="regular-text" placeholder="mak_..." autocomplete="off"> <button class="button button-primary">Connect</button>
     </form>
   </div>
   <?php endif; ?>
 
   <div class="mak-card mak-hero">
-    <div>
+    <div class="mak-hero-t">
       <h2>Let the AI set it up</h2>
-      <p>Fills in everything it can from your order and your site: name, tabs, colors, store text, privacy page, delete account page and the app home screen. Then you look it over. Takes about a minute.</p>
+      <p>The AI reads your whole site, works out what your business is about, then fills in your app: home screen, tabs, colors, store text, privacy page and delete account page. You look it over after. Takes a minute or two.</p>
+      <?php echo $msg( 'all' ); ?>
     </div>
-    <div><?php echo $ai( 'all', 'Set up my app' ); ?><span class="mak-msg" data-for="all"></span></div>
+    <div class="mak-hero-b"><?php echo $ai( 'all', 'Set up my app', true ); ?></div>
   </div>
 
   <div class="mak-card">
-    <h2><?php echo count( $todo ) ? 'Left to do: ' . count( $todo ) : 'Ready for the stores'; ?> <span class="mak-sub"><?php echo (int) $ready; ?> of <?php echo count( $checks ); ?> checks pass</span></h2>
+    <h2><?php echo $todo ? 'Left to do' : 'Ready for the stores'; ?> <span class="mak-sub"><?php echo (int) $ready; ?> of <?php echo count( $checks ); ?> checks pass</span></h2>
+    <?php if ( ! $todo ) echo '<p class="mak-good">Everything the stores need from your site is in place. Next is the Launch page.</p>'; ?>
     <?php foreach ( $checks as $c ) : if ( $c['ok'] ) continue; ?>
       <div class="mak-chk<?php echo $c['later'] ? ' later' : ''; ?>">
         <span class="mak-ic"><?php echo $c['later'] ? '&#9675;' : '!'; ?></span>
-        <div><strong><?php echo esc_html( $c['label'] ); ?></strong><br><span class="description"><?php echo esc_html( $c['fix'] ); ?></span></div>
-        <div><?php if ( $c['op'] ) echo $ai( $c['op'], 'Fix it' ) . '<span class="mak-msg" data-for="' . esc_attr( $c['op'] ) . '"></span>'; ?></div>
+        <div><strong><?php echo esc_html( $c['label'] ); ?></strong><span class="description"><?php echo esc_html( $c['fix'] ); ?></span></div>
+        <div class="mak-chk-b"><?php if ( $c['op'] ) echo $ai( $c['op'], 'Fix it' ) . $msg( $c['op'] ); ?></div>
       </div>
     <?php endforeach; ?>
-    <details class="mak-help"><summary>See the <?php echo (int) $ready; ?> that pass</summary><ul><?php foreach ( $checks as $c ) if ( $c['ok'] ) echo '<li>&#10003; ' . esc_html( $c['label'] ) . '</li>'; ?></ul></details>
+    <details class="mak-help"><summary>See the <?php echo (int) $ready; ?> that pass</summary><ul class="mak-pass"><?php foreach ( $checks as $c ) if ( $c['ok'] ) echo '<li>' . esc_html( $c['label'] ) . '</li>'; ?></ul></details>
   </div>
 
-  <form method="post">
+  <form method="post" id="mak-form">
     <?php wp_nonce_field( 'mak_save' ); ?>
     <input type="hidden" name="mak_save" value="1">
 
     <div class="mak-card">
+      <div class="mak-card-h"><h2>What the AI knows about your business</h2><div><?php echo $ai( 'study', $s['site_brief'] ? 'Study my site again' : 'Study my site' ) . $msg( 'study' ); ?></div></div>
+      <?php echo $help( 'Before the AI writes anything for your app, it reads your main pages, products and posts, the way a new employee would on day one, and writes down what your business is, who it is for and why people would open your app. Everything it writes afterwards (store text, greeting, tabs, the assistant\'s answers) starts from this note. If it got something wrong or missed something, fix it here and press Save.' ); ?>
+      <textarea class="large-text" rows="7" id="mak_site_brief" name="mak[site_brief]" placeholder="Press Study my site and the AI reads your site and writes this for you. Or write a few lines yourself: what you do, who your customers are, and what they would use the app for."><?php echo esc_textarea( $s['site_brief'] ); ?></textarea>
+    </div>
+
+    <div class="mak-card">
       <h2>How the app looks</h2>
-      <?php echo $help( 'This is what people see when they open your app. The name shows under the icon on their phone. The home screen is the first page of the app. Tabs are the buttons along the bottom. The app reads these from your site every time it opens, so you can change them later without a new version.' ); ?>
+      <?php echo $help( 'This is what people see when they open your app. The name shows under the icon on their phone. The home screen is the first page of the app. Tabs are the buttons along the bottom. With live settings on, the app picks these up from your site every time it opens, so you can change them later without a new version.' ); ?>
       <table class="form-table">
         <?php $f( 'app_name', 'App name', 'Up to 30 characters. Under the icon on a phone it shows about 12.' ); ?>
         <tr><th>Home screen</th><td>
-          <?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) echo '<label style="display:block;margin:0 0 6px"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '> ' . esc_html( $v ) . '</label>'; ?>
-          <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) echo '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See it</a></p>'; else echo '<p>' . $ai( 'home', 'Make the home screen' ) . '<span class="mak-msg" data-for="home"></span></p>'; ?>
+          <div class="mak-tpls"><?php foreach ( ( class_exists( 'MAK_Home' ) ? MAK_Home::templates() : [] ) as $k => $v ) { $p = explode( ':', $v, 2 ); echo '<label class="mak-tpl"><input type="radio" name="mak[home_template]" value="' . esc_attr( $k ) . '"' . checked( $s['home_template'], $k, false ) . '><span class="mak-tpl-i">' . MAK_Admin_UI::svg( [ 'dashboard' => 'grid', 'store' => 'shop', 'feed' => 'news', 'services' => 'phone' ][ $k ] ?? 'star', 22 ) . '</span><strong>' . esc_html( $p[0] ) . '</strong><span>' . esc_html( trim( $p[1] ?? '' ) ) . '</span></label>'; } ?></div>
+          <?php $hp = (int) $s['home_page']; if ( $hp && get_post_status( $hp ) === 'publish' ) echo '<p><a class="button" href="' . esc_url( get_permalink( $hp ) ) . '" target="_blank">See the home screen</a></p>'; else echo '<p>' . $ai( 'home', 'Make the home screen' ) . $msg( 'home' ) . '</p>'; ?>
           <p class="description">Required: Apple turns down apps that are just the website. Built from your own posts, products and links.</p>
         </td></tr>
-        <?php $t( 'tabs', 'Bottom tabs', 'One per line: <code>Label|/page-address/|icon</code>, up to 5. Icons: home, shop, cart, account, search, news, chat, community, bell, heart, star, map, phone, calendar, play, grid, info, menu.', 5, '<p>' . $ai( 'tabs', 'Make tabs from my menu' ) . '<span class="mak-msg" data-for="tabs"></span> ' . $ask( 'Which tabs should my app have?' ) . '</p>' ); ?>
+        <?php $f( 'home_headline', 'Home screen greeting', 'Visitors see this. Members see Hi and their first name.' ); ?>
+        <tr><th>Home screen shortcuts</th><td><?php echo $rows( 'home_tiles', 8, 'shortcut', 'One per line: <code>Label|/page-address/|icon</code>. Empty uses the tabs.' ); ?><p class="description">Big buttons on the home screen. Leave empty to show your tabs there.</p></td></tr>
+        <tr><th>Bottom tabs</th><td>
+          <?php echo $rows( 'tabs', 5, 'tab', 'One per line: <code>Label|/page-address/|icon</code>, up to 5.' ); ?>
+          <p class="mak-btns"><?php echo $ai( 'tabs', 'Make tabs from my menu' ) . $msg( 'tabs' ) . $ask( 'Which tabs should my app have?' ); ?></p>
+        </td></tr>
         <tr><th><label for="mak_nav">Tab bar style</label></th><td>
           <select id="mak_nav" name="mak[nav]"><?php foreach ( self::navs() as $k => $v ) echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['nav'], $k, false ) . '>' . esc_html( $v ) . '</option>'; ?></select>
         </td></tr>
         <tr><th>Colors</th><td>
-          <?php $names = [ 'top' => 'Top bar', 'bar' => 'Tab bar', 'active' => 'Selected tab', 'inactive' => 'Other tabs', 'paper' => 'Background', 'ink' => 'Text', 'muted' => 'Soft text' ];
-          foreach ( $s['colors'] as $k => $v ) echo '<label class="mak-col">' . esc_html( $names[ $k ] ?? ucfirst( $k ) ) . '<br><input type="color" name="mak[colors][' . esc_attr( $k ) . ']" value="' . esc_attr( $v ) . '"></label>'; ?>
-          <p><?php echo $ai( 'colors', 'Use my site\'s colors' ); ?><span class="mak-msg" data-for="colors"></span></p>
+          <div class="mak-cols"><?php $names = [ 'top' => 'Top bar', 'bar' => 'Tab bar', 'active' => 'Selected tab', 'inactive' => 'Other tabs', 'paper' => 'Background', 'ink' => 'Text', 'muted' => 'Soft text' ];
+          foreach ( $s['colors'] as $k => $v ) echo '<label class="mak-col"><input type="color" name="mak[colors][' . esc_attr( $k ) . ']" value="' . esc_attr( $v ) . '"><span>' . esc_html( $names[ $k ] ?? ucfirst( $k ) ) . '</span></label>'; ?></div>
+          <p class="mak-btns"><?php echo $ai( 'colors', 'Use my site\'s colors' ) . $msg( 'colors' ); ?></p>
         </td></tr>
       </table>
     </div>
 
     <div class="mak-card">
-      <h2>The store page</h2>
-      <?php echo $help( 'What people read on the App Store and Google Play before they download your app. The subtitle sits under the app name, the description says what the app does, and the keywords help people find it in search (iPhone only, nobody sees them).' ); ?>
-      <p><?php echo $ai( 'write', 'Write it with AI' ); ?><span class="mak-msg" data-for="write"></span> <span class="description">Writes the subtitle, description, keywords, home screen greeting and first launch screens from your site.</span></p>
+      <div class="mak-card-h"><h2>The store page</h2><div><?php echo $ai( 'write', 'Write it with AI' ) . $msg( 'write' ); ?></div></div>
+      <?php echo $help( 'What people read on the App Store and Google Play before they download your app. The subtitle sits under the app name, the description says what the app does, and the keywords help people find it in search (iPhone only, nobody sees them). Write it with AI also writes the home screen greeting and the first launch screens, from what the AI knows about your business.' ); ?>
       <table class="form-table">
         <?php $f( 'subtitle', 'Subtitle', 'Up to 30 characters.' ); ?>
-        <?php $t( 'description', 'Description', 'Up to 4000 characters.', 8 ); ?>
+        <?php $t( 'description', 'Description', 'Up to 4000 characters.', 9 ); ?>
         <?php $f( 'keywords', 'Keywords', 'Comma separated, up to 100 characters.' ); ?>
         <?php $f( 'support_email', 'Support email', 'Apple\'s reviewers and Google Play show this.', 'email' ); ?>
+        <?php $t( 'onboarding', 'First launch screens', 'Shown once, the first time someone opens the app. One per line: <code>Title|Text</code>. The last one asks to turn on notifications.', 4 ); ?>
       </table>
     </div>
 
     <details class="mak-card mak-adv">
-      <summary><h2 style="display:inline">Advanced</h2> <span class="mak-sub">first launch screens, home screen details, what is hidden in the app, links, your key</span></summary>
+      <summary><h2>Advanced</h2><span class="mak-sub">local business details, what is hidden in the app, app ids, your key</span></summary>
       <table class="form-table">
         <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made.' ); ?>
         <tr><th>Live settings</th><td>
           <label><input type="checkbox" name="mak[live]" value="1" <?php checked( (int) $s['live'], 1 ); ?>> The app reads its tabs, colors, tab bar style and start page from here each time it opens</label>
           <p class="description">Turned on for you by Set up my app. With it off, the app keeps what it was built with.</p>
         </td></tr>
-        <?php $t( 'onboarding', 'First launch screens', 'Shown once, the first time someone opens the app. One per line: <code>Title|Text</code>. The last one asks to turn on notifications.', 4 ); ?>
-        <?php $f( 'home_headline', 'Home screen greeting', 'Visitors see this. Members see Hi and their first name.' ); ?>
-        <?php $t( 'home_tiles', 'Home screen shortcuts', 'Up to 8, one per line: <code>Label|/page-address/|icon</code>. Empty uses the tabs.', 4 ); ?>
         <?php $f( 'home_phone', 'Phone (local business look)' ); ?>
         <?php $f( 'home_book', 'Booking link (local business look)' ); ?>
         <?php $f( 'home_address', 'Address (local business look)' ); ?>
@@ -559,7 +592,7 @@ final class Marketur_App_Kit {
         </td></tr>
         <tr><th><label for="mak_hub_key">App Kit key</label></th><td>
           <input type="password" class="regular-text" id="mak_hub_key" name="mak[hub_key]" value="" autocomplete="off" placeholder="<?php echo $s['hub_key'] ? 'Saved. Paste a new one to replace it.' : 'From your Marketur order'; ?>">
-          <?php if ( $s['hub_key'] ) : ?><label style="margin-left:10px"><input type="checkbox" name="mak[hub_key_clear]" value="1"> Remove</label> <?php echo $ai( 'order', 'Fill in from my order again' ); ?><span class="mak-msg" data-for="order"></span><?php endif; ?>
+          <?php if ( $s['hub_key'] ) : ?><label style="margin:0 10px"><input type="checkbox" name="mak[hub_key_clear]" value="1"> Remove</label> <?php echo $ai( 'order', 'Fill in from my order again' ) . $msg( 'order' ); ?><?php endif; ?>
         </td></tr>
         <?php $f( 'bundle_id', 'App id (bundle id)', 'From your order, for example com.yoursite.app.' ); ?>
         <?php $f( 'android_package', 'Android app id', 'Leave empty when it is the same.' ); ?>
@@ -570,39 +603,112 @@ final class Marketur_App_Kit {
       <p class="description">Marketur App Kit <?php echo esc_html( MAK_VERSION ); ?>. <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mak_export' ), 'mak_export' ) ); ?>">Download these settings</a></p>
     </details>
 
-    <p><button class="button button-primary button-hero">Save</button> &nbsp; <a href="<?php echo esc_url( admin_url( 'admin.php?page=mak-launch' ) ); ?>">Next: Launch &rarr;</a></p>
+    <div class="mak-save"><button class="button button-primary button-hero">Save changes</button> <a class="button button-hero" href="<?php echo esc_url( admin_url( 'admin.php?page=mak-launch' ) ); ?>">Next: Launch &rarr;</a></div>
   </form>
+  </div>
+
+  <aside class="mak-side">
+    <div class="mak-phone" data-nav="<?php echo esc_attr( $s['nav'] ); ?>">
+      <div class="mak-ptop"><span class="mak-pname"></span></div>
+      <div class="mak-pscreen"><iframe src="<?php echo esc_url( add_query_arg( 'mak_preview', '1', $start ) ); ?>" title="App preview" loading="lazy"></iframe></div>
+      <div class="mak-pbar"></div>
+    </div>
+    <p class="mak-pnote">Your app, roughly. The tabs and colors change as you edit; the page shows after you save. <a href="<?php echo esc_url( $start ); ?>" target="_blank">Open the start page</a></p>
+  </aside>
+  </div>
+  <?php MAK_Admin_UI::editor_js(); ?>
 </div>
 <style>
-.mak-set .mak-card{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:16px 20px;margin:14px 0;max-width:980px}
-.mak-set .mak-card h2{margin:4px 0 8px;font-size:17px}
-.mak-set .mak-hero{display:flex;gap:20px;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#f0f6fc,#fff);border-color:#c5d9ed}
-.mak-set .mak-hero .mak-auto{font-size:15px;padding:6px 18px;background:#2271b1;color:#fff;border-color:#2271b1}
-.mak-set .mak-key{border-color:#dba617;background:#fffbea}
-.mak-set .mak-sub{font-weight:400;color:#646970;font-size:13px;margin-left:6px}
-.mak-set .mak-chk{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #f0f0f1}
-.mak-set .mak-ic{color:#d97706;font-weight:700;font-size:18px;text-align:center}
-.mak-set .later .mak-ic{color:#8c8f94}.mak-set .later strong{color:#50575e;font-weight:500}
-.mak-set .mak-help summary{cursor:pointer;color:#2271b1;margin:2px 0 8px}
-.mak-set .mak-help p{background:#f6f7f7;border-radius:8px;padding:10px 12px;max-width:760px}
-.mak-set .mak-adv>summary{cursor:pointer;list-style:none}
-.mak-set .mak-col{display:inline-block;margin:0 14px 8px 0;font-size:12px}
-.mak-set .mak-msg{margin-left:8px;font-size:13px}.mak-set .mak-msg.bad{color:#b32d2e}.mak-set .mak-msg.good{color:#007017}
-.mak-set .mak-ask{margin-left:10px}
-.mak-set .form-table th{width:180px}
+.mak-set .mak-head{display:flex;align-items:center;gap:16px;margin:14px 0 18px;max-width:1320px}
+.mak-set .mak-appicon{width:58px;height:58px;border-radius:16px;overflow:hidden;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(16,24,40,.12);flex:none}
+.mak-set .mak-appicon img{width:100%;height:100%;object-fit:cover}
+.mak-set .mak-head-t{flex:1}.mak-set .mak-head h1{margin:0 0 6px;padding:0}
+.mak-set .mak-chips{display:flex;flex-wrap:wrap;gap:6px}
+.mak-set .mak-chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:#f2f4f7;color:#475467}
+.mak-set .mak-chip.ok{background:#ecfdf3;color:#067647}.mak-set .mak-chip.warn{background:#fffaeb;color:#b54708}
+.mak-set .mak-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start;max-width:1320px}
+.mak-set .mak-card{background:#fff;border:1px solid #e4e7ec;border-radius:16px;padding:20px 24px;margin:0 0 16px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+.mak-set .mak-card h2{margin:0 0 6px;font-size:17px;font-weight:700}
+.mak-set .mak-card-h{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.mak-set .mak-card-h>div{text-align:right}
+.mak-set .mak-hero{display:flex;gap:24px;align-items:center;background:linear-gradient(135deg,#f5f3ff 0%,#eff6ff 60%,#fff 100%);border-color:#ddd6fe}
+.mak-set .mak-hero-t{flex:1}.mak-set .mak-hero-t p{margin:4px 0 0;color:#475467;max-width:640px}
+.mak-set .mak-hero-b{flex:none}
+.mak-set .mak-key{border-color:#fedf89;background:#fffcf5}.mak-set .mak-inline{display:flex;gap:8px;flex-wrap:wrap}
+.mak-set .mak-sub{font-weight:500;color:#667085;font-size:13px;margin-left:8px}
+.mak-set .mak-good{background:#ecfdf3;color:#067647;border-radius:10px;padding:10px 14px;font-weight:600}
+.mak-set .mak-chk{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid #f2f4f7}
+.mak-set .mak-chk .description{display:block;margin-top:2px}
+.mak-set .mak-chk-b{text-align:right}
+.mak-set .mak-ic{width:26px;height:26px;border-radius:50%;background:#fffaeb;color:#dc6803;font-weight:800;display:flex;align-items:center;justify-content:center}
+.mak-set .later .mak-ic{background:#f2f4f7;color:#98a2b3}.mak-set .later strong{color:#475467;font-weight:500}
+.mak-set .mak-pass{margin:6px 0 0 4px}.mak-set .mak-pass li:before{content:"\2713";color:#12b76a;font-weight:800;margin-right:8px}
+.mak-set .mak-help summary{cursor:pointer;color:#2563eb;margin:2px 0 10px;font-weight:500;width:max-content}
+.mak-set .mak-help p{background:#f8f9fc;border:1px solid #eaecf0;border-radius:10px;padding:12px 14px;max-width:780px;color:#344054;line-height:1.55}
+.mak-set .mak-adv>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:4px}
+.mak-set .mak-adv>summary::-webkit-details-marker{display:none}
+.mak-set .mak-adv>summary h2{margin:0}.mak-set .mak-adv>summary:before{content:"\25B8";color:#667085;margin-right:6px}.mak-set .mak-adv[open]>summary:before{content:"\25BE"}
+.mak-set .form-table th{width:190px;font-weight:600;color:#344054}
+.mak-set .mak-msg{display:block;margin-top:6px;font-size:13px;color:#6d28d9;min-height:0}
+.mak-set .mak-msg:empty{display:none}.mak-set .mak-msg.bad{color:#b42318}.mak-set .mak-msg.good{color:#067647}
+.mak-set .mak-btns{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.mak-set .mak-btns .mak-msg{margin:0}
+.mak-set .mak-ask{font-weight:500}
+.mak-set .mak-done ul{list-style:disc;margin:0 0 6px 22px}
+.mak-set .mak-tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:8px}
+.mak-set .mak-tpl{position:relative;display:flex;flex-direction:column;gap:3px;padding:12px 14px;border:1.5px solid #e4e7ec;border-radius:12px;cursor:pointer;background:#fff}
+.mak-set .mak-tpl input{position:absolute;opacity:0}.mak-set .mak-tpl span:last-child{font-size:12px;color:#667085;line-height:1.4}
+.mak-set .mak-tpl-i{color:#667085}.mak-set .mak-tpl:has(input:checked){border-color:#2563eb;background:#f5f8ff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.mak-set .mak-tpl:has(input:checked) .mak-tpl-i{color:#2563eb}
+.mak-set .mak-cols{display:flex;flex-wrap:wrap;gap:10px}
+.mak-set .mak-col{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:#475467;width:76px;text-align:center}
+.mak-set .mak-col input{width:52px;height:36px;padding:2px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;cursor:pointer}
+.mak-set .mak-row{display:grid;grid-template-columns:44px minmax(100px,170px) minmax(0,1fr) auto 32px;gap:8px;align-items:center;margin:0 0 8px;padding:6px;border:1px solid #eaecf0;border-radius:12px;background:#fcfcfd}
+.mak-set .mak-row input{width:100%;min-height:38px;box-sizing:border-box;margin:0}
+.mak-set .mak-ib{width:44px;height:40px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#2563eb;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mak-set .mak-ib:hover{border-color:#2563eb;background:#f5f8ff}
+.mak-set .mak-mv{display:flex}.mak-set .mak-mv button,.mak-set .mak-x{border:0;background:transparent;cursor:pointer;color:#667085;font-size:16px;width:30px;height:34px;border-radius:8px}
+.mak-set .mak-mv button:hover,.mak-set .mak-x:hover{background:#f2f4f7;color:#101828}.mak-set .mak-x:hover{color:#b42318}
+.mak-set .mak-raw summary{cursor:pointer;color:#667085;font-size:12.5px;margin:4px 0}
+.mak-set .mak-card textarea.large-text,.mak-set .mak-card input.regular-text{width:100%;max-width:640px;box-sizing:border-box}.mak-set .mak-card textarea.large-text{max-width:none}
+.mak-set .mak-save{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding:14px 0;background:linear-gradient(transparent,#f5f6fa 35%)}
+.mak-pick{position:absolute;z-index:100000;width:430px;background:#fff;border:1px solid #e4e7ec;border-radius:14px;box-shadow:0 16px 40px rgba(16,24,40,.2);padding:12px}
+.mak-pick-h{font-weight:700;font-size:13px;margin:0 0 8px;color:#101828}
+.mak-pick-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.mak-pick-g button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:1px solid transparent;border-radius:10px;background:transparent;color:#344054;cursor:pointer;font-size:10.5px}
+.mak-pick-g button:hover{background:#f5f8ff;border-color:#bfd2fb;color:#2563eb}
+.mak-set .mak-side{position:sticky;top:46px}
+.mak-set .mak-phone{position:relative;width:300px;height:620px;border-radius:46px;border:10px solid #101828;background:#fff;overflow:hidden;box-shadow:0 24px 50px rgba(16,24,40,.22)}
+.mak-set .mak-ptop{position:absolute;top:0;left:0;right:0;height:30px;z-index:2;display:flex;align-items:flex-end;justify-content:center;font-size:10px;font-weight:700;color:#101828;padding-bottom:3px;box-sizing:border-box}
+.mak-set .mak-pscreen{position:absolute;top:30px;left:0;right:0;bottom:0;overflow:hidden}
+.mak-set .mak-pscreen iframe{width:390px;height:800px;border:0;transform:scale(.718);transform-origin:0 0;background:#fff}
+.mak-set .mak-pbar{position:absolute;z-index:3;display:flex;justify-content:space-around;align-items:center}
+.mak-set .mak-pbar span{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:9px;min-width:0}.mak-set .mak-pbar b{font-weight:600;white-space:nowrap;max-width:52px;overflow:hidden;text-overflow:ellipsis}
+.mak-set .mak-phone[data-nav=floating] .mak-pbar{left:10px;right:10px;bottom:12px;height:54px;border-radius:24px;box-shadow:0 6px 20px rgba(16,24,40,.22)}
+.mak-set .mak-phone[data-nav=fixed] .mak-pbar{left:0;right:0;bottom:0;height:62px;padding-bottom:8px;box-sizing:border-box;border-top:1px solid rgba(16,24,40,.08)}
+.mak-set .mak-phone[data-nav=none] .mak-pbar{display:none}
+.mak-set .mak-pnote{font-size:12px;color:#667085;width:300px;text-align:center}
+@media (max-width:1200px){.mak-set .mak-grid{grid-template-columns:1fr}.mak-set .mak-side{display:none}}
+@media (max-width:782px){.mak-set .mak-hero{flex-direction:column;align-items:flex-start}.mak-set .mak-row{grid-template-columns:44px 1fr 32px}.mak-set .mak-row .mak-p{grid-column:1/-1}.mak-set .mak-mv{display:none}}
 </style>
 <script>
 (function(){
-  var url=<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,nonce=<?php echo wp_json_encode( wp_create_nonce( 'mak_auto' ) ); ?>;
+  var url=<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,nonce=<?php echo wp_json_encode( wp_create_nonce( 'mak_auto' ) ); ?>,connected=<?php echo $connected ? 'true' : 'false'; ?>;
+  var words={study:'Reading your site and working out what your business is about. This takes a minute...',all:'Setting up your app...',write:'Writing your store page. This can take a minute...'};
+  function call(op,keep){var f=new FormData();f.append('action','mak_auto');f.append('nonce',nonce);f.append('op',op);if(keep)f.append('keep','1');return fetch(url,{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();});}
   document.querySelectorAll('.mak-set .mak-auto').forEach(function(b){b.addEventListener('click',function(){
     var op=b.dataset.op,msg=document.querySelector('.mak-set .mak-msg[data-for="'+op+'"]');
-    b.disabled=true;if(msg){msg.className='mak-msg';msg.textContent=op==='all'||op==='write'?'Working on it, this can take a minute...':'Working...';}
-    var f=new FormData();f.append('action','mak_auto');f.append('nonce',nonce);f.append('op',op);
-    fetch(url,{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){
-      b.disabled=false;
-      if(!j||!j.success){if(msg){msg.className='mak-msg bad';msg.textContent=(j&&j.data&&j.data.message)||'That did not work. Try again.';}return;}
-      location.href=location.pathname+'?page=marketur-app-kit&auto=1';
-    }).catch(function(){b.disabled=false;if(msg){msg.className='mak-msg bad';msg.textContent='Lost the connection. Try again.';}});
+    var steps=op==='all'&&connected?['study','all']:[op];
+    function say(t,c){if(msg){msg.className='mak-msg'+(c?' '+c:'');msg.textContent=t;}}
+    b.disabled=true;b.classList.add('is-busy');
+    var i=0,errs=[];
+    (function next(){
+      var s=steps[i];say(words[s]||'Working on it...');
+      call(s,i>0).then(function(j){
+        if(!j||!j.success){errs.push((j&&j.data&&j.data.message)||'That did not work.');if(steps.length===1||i===steps.length-1){b.disabled=false;b.classList.remove('is-busy');say(errs.join(' '),'bad');return;}}
+        i++;if(i<steps.length)return next();
+        location.href=location.pathname+'?page=marketur-app-kit&auto=1';
+      }).catch(function(){b.disabled=false;b.classList.remove('is-busy');say('Lost the connection. Try again.','bad');});
+    })();
   });});
 })();
 </script>
@@ -616,6 +722,7 @@ function mak_is_plugin_active( $f ) {
 }
 
 Marketur_App_Kit::instance();
+require_once __DIR__ . '/includes/admin-ui.php';
 require_once __DIR__ . '/includes/ai-tools.php';
 require_once __DIR__ . '/includes/assistant.php';
 require_once __DIR__ . '/includes/launch.php';
