@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Marketur App Kit
  * Description: Gets a WordPress site ready to be an iPhone and Android app made with the Marketur App Kit. Hides the web menus inside the app, adds the delete account page app stores ask for, serves the app link files, checks the site is ready, and sends the app its live settings (tabs, colors, bar style) so most changes need no new build.
- * Version: 1.8.0
+ * Version: 1.8.1
  * Author: Marketur
  * Author URI: https://marketur.net
  * License: GPLv2 or later
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MAK_VERSION', '1.8.0' );
+define( 'MAK_VERSION', '1.8.1' );
 define( 'MAK_OPT', 'mak_settings' );
 
 final class Marketur_App_Kit {
@@ -378,10 +378,21 @@ final class Marketur_App_Kit {
         $add( strlen( wp_strip_all_tags( (string) $s['description'] ) ) >= 200, 'The store description is written', 'It goes on both store pages.', $s['hub_key'] ? 'write' : '' );
         $add( $s['apple_team_id'] && $s['bundle_id'], 'Links to the site open in the iPhone app', 'Optional. Add your Apple Team ID under Advanced once you have your Apple account.', '', true );
         $add( (bool) trim( (string) $s['android_sha256'] ), 'Links to the site open in the Android app', 'Optional. Filled in for you when you make the Android key on the Launch page.', '', true );
-        $hp = (int) $s['home_page'];
-        $add( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ), 'The app opens on its own home screen', 'Apple turns down apps that are just the website.', 'home' );
+        $add( self::start_is_home(), 'The app opens on its own home screen', 'Apple turns down apps that are just the website.', 'home' );
         $add( ! ( class_exists( 'WooCommerce' ) && self::sells_digital() ), 'No digital products sold on the site', 'You sell downloads or virtual products. Apple wants those bought with in-app purchase inside the iPhone app; ask us before launch.' );
         return $out;
+    }
+
+    /** The app opens on a real home screen: App Kit's own, or one the site already has (Marketur App Home, NexURLs App Home). */
+    public static function start_is_home() {
+        $s = self::get();
+        $hp = (int) $s['home_page'];
+        if ( $hp && get_post_status( $hp ) === 'publish' && untrailingslashit( (string) $s['start'] ) === untrailingslashit( (string) get_permalink( $hp ) ) ) return true;
+        $id = url_to_postid( (string) $s['start'] );
+        if ( ! $id || get_post_status( $id ) !== 'publish' ) return false;
+        $c = (string) get_post_field( 'post_content', $id );
+        foreach ( [ '[mak_app_home', '[marketur_app_home', '[nexurls_app_home' ] as $code ) if ( strpos( $c, $code ) !== false ) return true;
+        return false;
     }
 
     private static function sells_digital() {
@@ -641,7 +652,7 @@ final class Marketur_App_Kit {
     <details class="mak-card mak-adv">
       <summary><h2>Advanced</h2><span class="mak-sub">local business details, what is hidden in the app, app ids, your key</span></summary>
       <table class="form-table">
-        <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made.' ); ?>
+        <?php $f( 'start', 'Start page', 'The page the app opens on. Set for you when the home screen is made. If your site already has its own app home screen (like Marketur App Home), put its address here.' ); ?>
         <tr><th>App feel</th><td>
           <label><input type="checkbox" name="mak[feel]" value="1" <?php checked( (int) $s['feel'], 1 ); ?>> The NexURLs feel inside the app: other websites open in an in-app browser, a loading bar between pages, buzzes when something posts, a rating prompt for happy users</label>
         </td></tr>
